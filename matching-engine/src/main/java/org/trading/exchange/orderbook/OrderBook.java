@@ -24,11 +24,12 @@ public class OrderBook {
 
         if (order == null) {
             System.out.println("Order not found: " + orderId);
-            return;
+            throw new IllegalArgumentException("Order not found: " + orderId);
         }
 
         TreeMap<Long, Deque<Order>> book = order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         Deque<Order> queue = book.get(order.getPrice());
+        
         if (queue != null) {
             queue.remove(order);
             if (queue.isEmpty()) {
