@@ -2,6 +2,7 @@ package org.trading.exchange.engine;
 
 import org.trading.exchange.event.OrderEvent;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.orderbook.OrderBook;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -12,6 +13,7 @@ public class MatchingEngine {
     private final BlockingQueue<OrderEvent> events = new LinkedBlockingQueue<>();
     private volatile boolean running = false;
     private Thread engineThread;
+    private final OrderBook orderBook = new OrderBook();
 
     public void start() {
         if (running) {
@@ -44,12 +46,12 @@ public class MatchingEngine {
 
     private void handleNewOrder(Order order) {
         System.out.println("Processing new order: " + order);
-        // TODO: implement matching logic
+        orderBook.addOrder(order);
     }
 
     private void handleCancelOrder(String orderId) {
         System.out.println("Processing cancel order: " + orderId);
-        //TODO: implement cancel logic
+        orderBook.cancelOrder(orderId);
     }
 
     public boolean submit(OrderEvent event) {
