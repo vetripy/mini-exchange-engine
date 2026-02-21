@@ -11,13 +11,14 @@ public class MatchingEngine {
 
     private final BlockingQueue<OrderEvent> events = new LinkedBlockingQueue<>();
     private volatile boolean running = false;
+    private Thread engineThread;
 
     public void start() {
         if (running) {
             throw new IllegalStateException("Engine is already running");
         }
         running = true;
-        Thread engineThread = new Thread(this::run);
+        engineThread = new Thread(this::run);
         engineThread.setName("engine-thread");
         engineThread.start();
     }
@@ -59,6 +60,10 @@ public class MatchingEngine {
     }
 
     public void stop() {
+        if (!running) {
+            throw new IllegalStateException("Engine is not running");
+        }
         running = false;
+        engineThread.interrupt();
     }
 }
