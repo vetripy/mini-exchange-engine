@@ -1,5 +1,7 @@
 package org.trading.exchange.model;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.ToString;
 
@@ -8,6 +10,8 @@ import java.util.UUID;
 
 @Getter
 @ToString
+@Builder
+@AllArgsConstructor
 public class Order {
     private final String id;
     private final String userId;

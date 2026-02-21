@@ -39,13 +39,13 @@ public class OrderBook {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order sellOrder = queue.peek();
 
-            if (order.getPrice() >= sellOrder.getPrice()) {
-                executeTrade(order, sellOrder);
-                if (sellOrder.getRemainingQuantity() == 0) {
-                    queue.poll();
-                    if (queue.isEmpty()) {
-                        sellOrders.pollFirstEntry();
-                    }
+            if (order.getPrice() < sellOrder.getPrice()) break;
+
+            executeTrade(order, sellOrder);
+            if (sellOrder.getRemainingQuantity() == 0) {
+                queue.poll();
+                if (queue.isEmpty()) {
+                    sellOrders.pollFirstEntry();
                 }
             }
         }
@@ -59,13 +59,12 @@ public class OrderBook {
             Deque<Order> queue = buyOrders.firstEntry().getValue();
             Order buyOrder = queue.peek();
 
-            if (order.getPrice() <= buyOrder.getPrice()) {
-                executeTrade(buyOrder, order);
-                if (buyOrder.getRemainingQuantity() == 0) {
-                    queue.poll();
-                    if (queue.isEmpty()) {
-                        buyOrders.pollFirstEntry();
-                    }
+            if (order.getPrice() > buyOrder.getPrice()) break;
+            executeTrade(buyOrder, order);
+            if (buyOrder.getRemainingQuantity() == 0) {
+                queue.poll();
+                if (queue.isEmpty()) {
+                    buyOrders.pollFirstEntry();
                 }
             }
         }
@@ -83,7 +82,7 @@ public class OrderBook {
         long tradeQuantity = Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
-        System.out.println("Executed trade: " + tradeQuantity + " @ " + sellOrder.getPrice());
+        System.out.println("Executed trade: " + tradeQuantity + " qty @ " + sellOrder.getPrice() + " price");
     }
 
     public void printDepth() {
