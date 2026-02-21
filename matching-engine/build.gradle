@@ -2,7 +2,7 @@ plugins {
     id 'java'
 }
 
-group = 'org.trading.engine'
+group = 'org.trading.exchange'
 version = '1.0-SNAPSHOT'
 
 repositories {
