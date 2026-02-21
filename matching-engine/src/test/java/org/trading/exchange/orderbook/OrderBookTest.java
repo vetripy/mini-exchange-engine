@@ -4,12 +4,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.trading.exchange.model.Order;
-import org.trading.exchange.model.OrderSide;
 
-import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.trading.exchange.stub.OrderStub.getValidBuyOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidSellOrderWith;
 
 public class OrderBookTest {
 
@@ -140,29 +140,6 @@ public class OrderBookTest {
         } catch (IllegalArgumentException e) {
             assertEquals("Order not found: " + nonExistentOrderId, e.getMessage());
         }
-    }
-
-
-    private Order getValidBuyOrderWith(Long price, Long quantity) {
-        return Order.builder()
-                .id(UUID.randomUUID().toString())
-                .side(OrderSide.BUY)
-                .price(price)
-                .userId("user1")
-                .remainingQuantity(quantity)
-                .timestamp(Instant.EPOCH)
-                .build();
-    }
-
-    private Order getValidSellOrderWith(Long price, Long quantity) {
-        return Order.builder()
-                .id(UUID.randomUUID().toString())
-                .userId("user2")
-                .side(OrderSide.SELL)
-                .price(price)
-                .remainingQuantity(quantity)
-                .timestamp(Instant.EPOCH)
-                .build();
     }
 
 }
