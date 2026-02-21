@@ -3,9 +3,7 @@ package org.trading.exchange.orderbook;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderSide;
 
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.TreeMap;
+import java.util.*;
 
 public class OrderBook {
 
@@ -18,6 +16,22 @@ public class OrderBook {
         } else {
             matchSell(order);
         }
+    }
+
+    public Map<Long, List<Order>> getBuySnapshot() {
+        Map<Long, List<Order>> snapshot = new TreeMap<>(Comparator.reverseOrder());
+        for (Map.Entry<Long, Deque<Order>> entry : buyOrders.entrySet()) {
+            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return snapshot;
+    }
+
+    public Map<Long, List<Order>> getSellSnapshot() {
+        Map<Long, List<Order>> snapshot = new TreeMap<>();
+        for (Map.Entry<Long, Deque<Order>> entry : sellOrders.entrySet()) {
+            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return snapshot;
     }
 
     private void matchBuy(Order order) {
