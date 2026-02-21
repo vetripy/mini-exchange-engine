@@ -8,10 +8,11 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 
 public class MatchingEngine {
+
     private final BlockingQueue<OrderEvent> events = new LinkedBlockingQueue<>();
     private volatile boolean running = false;
 
-    public void start(){
+    public void start() {
         if (running) {
             throw new IllegalStateException("Engine is already running");
         }
