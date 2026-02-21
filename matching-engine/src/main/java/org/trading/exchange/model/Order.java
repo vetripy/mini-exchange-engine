@@ -1,6 +1,7 @@
 package org.trading.exchange.model;
 
 import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
 
 import java.time.Instant;
@@ -12,9 +13,11 @@ public class Order {
     private final String userId;
     private final OrderSide side;
     private final Long price;
-    private OrderState state;
-    private Long remainingQuantity;
     private final Instant timestamp;
+    private Long remainingQuantity;
+    
+    @Setter
+    private OrderState state;
 
     public Order(String id, String userId, OrderSide side, Long price, Long quantity) {
         this.id = id;
