@@ -9,6 +9,7 @@ public class OrderBook {
 
     private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, Deque<Order>> sellOrders = new TreeMap<>();
+    private final Map<String, Order> orderIndex = new HashMap<>();
 
     public void addOrder(Order order) {
         if (order.getSide() == OrderSide.BUY) {
@@ -16,6 +17,28 @@ public class OrderBook {
         } else {
             matchSell(order);
         }
+    }
+
+    public void cancelOrder(String orderId) {
+        Order order = orderIndex.get(orderId);
+
+        if (order == null) {
+            System.out.println("Order not found: " + orderId);
+            return;
+        }
+
+        TreeMap<Long, Deque<Order>> book = order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
+        Deque<Order> queue = book.get(order.getPrice());
+        if (queue != null) {
+            queue.remove(order);
+            if (queue.isEmpty()) {
+                book.remove(order.getPrice());
+            }
+        }
+
+        orderIndex.remove(orderId);
+        System.out.println("Cancelled order: " + orderId);
+
     }
 
     public Map<Long, List<Order>> getBuySnapshot() {
@@ -44,6 +67,7 @@ public class OrderBook {
             executeTrade(order, sellOrder);
             if (sellOrder.getRemainingQuantity() == 0) {
                 queue.poll();
+                orderIndex.remove(sellOrder.getId());
                 if (queue.isEmpty()) {
                     sellOrders.pollFirstEntry();
                 }
@@ -63,6 +87,7 @@ public class OrderBook {
             executeTrade(buyOrder, order);
             if (buyOrder.getRemainingQuantity() == 0) {
                 queue.poll();
+                orderIndex.remove(buyOrder.getId());
                 if (queue.isEmpty()) {
                     buyOrders.pollFirstEntry();
                 }
@@ -76,6 +101,7 @@ public class OrderBook {
 
     private void addToBook(TreeMap<Long, Deque<Order>> book, Order order) {
         book.computeIfAbsent(order.getPrice(), k -> new java.util.LinkedList<>()).offerLast(order);
+        orderIndex.put(order.getId(), order);
     }
 
     private void executeTrade(Order buyOrder, Order sellOrder) {
