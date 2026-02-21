@@ -16,7 +16,7 @@ public class Trade {
     private final long quantity;
     private final Instant timestamp;
 
-    public Trade(String id, String buyOrderId, String sellOrderId, long price, long quantity, Instant timestamp) {
+    public Trade(String buyOrderId, String sellOrderId, long price, long quantity) {
         this.id = UUID.randomUUID().toString();
         this.buyOrderId = buyOrderId;
         this.sellOrderId = sellOrderId;
