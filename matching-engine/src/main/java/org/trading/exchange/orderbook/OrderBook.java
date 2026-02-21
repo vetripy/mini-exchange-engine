@@ -85,4 +85,45 @@ public class OrderBook {
         sellOrder.reduceQuantity(tradeQuantity);
         System.out.println("Executed trade: " + tradeQuantity + " @ " + sellOrder.getPrice());
     }
+
+    public void printDepth() {
+
+        System.out.println("\n================ ORDER BOOK ================");
+
+        System.out.println("\nSELL SIDE");
+        System.out.printf("%-10s %-10s%n", "Price", "Quantity");
+
+        for (var entry : sellOrders.entrySet()) {
+            long totalQty = entry.getValue()
+                    .stream()
+                    .mapToLong(Order::getRemainingQuantity)
+                    .sum();
+
+            if (totalQty > 0) {
+                System.out.printf("%-10d %-10d%n",
+                        entry.getKey(),
+                        totalQty);
+            }
+        }
+
+        System.out.println("\n--------------------------------------------");
+
+        System.out.println("\nBUY SIDE");
+        System.out.printf("%-10s %-10s%n", "Price", "Quantity");
+
+        for (var entry : buyOrders.entrySet()) {
+            long totalQty = entry.getValue()
+                    .stream()
+                    .mapToLong(Order::getRemainingQuantity)
+                    .sum();
+
+            if (totalQty > 0) {
+                System.out.printf("%-10d %-10d%n",
+                        entry.getKey(),
+                        totalQty);
+            }
+        }
+
+        System.out.println("\n============================================\n");
+    }
 }
