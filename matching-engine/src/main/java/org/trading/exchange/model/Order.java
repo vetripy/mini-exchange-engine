@@ -1,28 +1,43 @@
 package org.trading.exchange.model;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
 
 import java.time.Instant;
 
 @Getter
 @ToString
-@Builder
-@AllArgsConstructor
 public class Order {
     private final String id;
     private final String userId;
     private final OrderSide side;
-    private final long price;
-    private long remainingQuantity;
+    private final Long price;
     private final Instant timestamp;
+    private Long remainingQuantity;
+    
+    @Setter
+    private OrderState state;
+
+    public Order(String id, String userId, OrderSide side, Long price, Long quantity) {
+        this.id = id;
+        this.userId = userId;
+        this.side = side;
+        this.price = price;
+        this.state = OrderState.NEW;
+        this.remainingQuantity = quantity;
+        this.timestamp = Instant.now();
+    }
 
     public void reduceQuantity(long quantity) {
         if (quantity > remainingQuantity) {
             throw new IllegalArgumentException("Cannot reduce more than remaining quantity");
         }
         this.remainingQuantity -= quantity;
+        if (this.remainingQuantity == 0) {
+            this.state = OrderState.FILLED;
+        } else {
+            this.state = OrderState.PARTIALLY_FILLED;
+        }
     }
 }

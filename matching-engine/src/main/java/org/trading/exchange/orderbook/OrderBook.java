@@ -2,6 +2,7 @@ package org.trading.exchange.orderbook;
 
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderSide;
+import org.trading.exchange.model.OrderState;
 
 import java.util.*;
 
@@ -29,14 +30,14 @@ public class OrderBook {
 
         TreeMap<Long, Deque<Order>> book = order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         Deque<Order> queue = book.get(order.getPrice());
-        
+
         if (queue != null) {
             queue.remove(order);
             if (queue.isEmpty()) {
                 book.remove(order.getPrice());
             }
         }
-
+        order.setState(OrderState.CANCELLED);
         orderIndex.remove(orderId);
         System.out.println("Cancelled order: " + orderId);
 
