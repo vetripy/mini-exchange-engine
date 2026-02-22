@@ -6,6 +6,8 @@ import org.trading.exchange.model.OrderState;
 
 import java.util.*;
 
+import static org.trading.exchange.model.OrderType.MARKET;
+
 public class OrderBook {
 
     private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
@@ -14,9 +16,17 @@ public class OrderBook {
 
     public void addOrder(Order order) {
         if (order.getSide() == OrderSide.BUY) {
-            matchBuy(order);
+            if (order.getType() == MARKET) {
+                matchMarketBuy(order);
+            } else {
+                matchBuy(order);
+            }
         } else {
-            matchSell(order);
+            if (order.getType() == MARKET) {
+                matchMarketSell(order);
+            } else {
+                matchSell(order);
+            }
         }
     }
 
@@ -99,6 +109,46 @@ public class OrderBook {
             addToBook(sellOrders, order);
         }
 
+    }
+
+    private void matchMarketBuy(Order order) {
+        while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
+            Deque<Order> queue = sellOrders.firstEntry().getValue();
+            Order bestSell = queue.peek();
+            executeTrade(order, bestSell);
+            if (bestSell.getRemainingQuantity() == 0) {
+                queue.poll();
+                orderIndex.remove(bestSell.getId());
+                if (queue.isEmpty()) {
+                    sellOrders.pollFirstEntry();
+                }
+            }
+        }
+        if (order.getRemainingQuantity() > 0) {
+            System.out.println("Market buy order partially filled, remaining quantity: " + order.getRemainingQuantity());
+            System.out.println("Cancelling remaining quantity");
+            order.setState(OrderState.CANCELLED);
+        }
+    }
+
+    private void matchMarketSell(Order order) {
+        while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
+            Deque<Order> queue = buyOrders.firstEntry().getValue();
+            Order bestBuy = queue.peek();
+            executeTrade(bestBuy, order);
+            if (bestBuy.getRemainingQuantity() == 0) {
+                queue.poll();
+                orderIndex.remove(bestBuy.getId());
+                if (queue.isEmpty()) {
+                    buyOrders.pollFirstEntry();
+                }
+            }
+        }
+        if (order.getRemainingQuantity() > 0) {
+            System.out.println("Market sell order partially filled, remaining quantity: " + order.getRemainingQuantity());
+            System.out.println("Cancelling remaining quantity");
+            order.setState(OrderState.CANCELLED);
+        }
     }
 
     private void addToBook(TreeMap<Long, Deque<Order>> book, Order order) {

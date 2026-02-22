@@ -5,12 +5,15 @@ import org.trading.exchange.model.OrderSide;
 
 import java.util.UUID;
 
+import static org.trading.exchange.model.OrderType.LIMIT;
+
 public class OrderStub {
     public static Order getValidBuyOrderWith(Long price, Long quantity) {
         return new Order(
                 UUID.randomUUID().toString(),
                 "user1",
                 OrderSide.BUY,
+                LIMIT,
                 price,
                 quantity
         );
@@ -21,6 +24,7 @@ public class OrderStub {
                 UUID.randomUUID().toString(),
                 "user2",
                 OrderSide.SELL,
+                LIMIT,
                 price,
                 quantity
         );
