@@ -14,15 +14,16 @@ public class Order {
     private final OrderSide side;
     private final Long price;
     private final Instant timestamp;
+    private final OrderType type;
     private Long remainingQuantity;
-    
     @Setter
     private OrderState state;
 
-    public Order(String id, String userId, OrderSide side, Long price, Long quantity) {
+    public Order(String id, String userId, OrderSide side, OrderType type, Long price, Long quantity) {
         this.id = id;
         this.userId = userId;
         this.side = side;
+        this.type = type;
         this.price = price;
         this.state = OrderState.NEW;
         this.remainingQuantity = quantity;
