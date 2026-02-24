@@ -1,13 +1,12 @@
 package org.trading.exchange.model;
 
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.*;
 
 import java.time.Instant;
 
 @Getter
 @ToString
+@Builder(access = AccessLevel.PRIVATE)
 public class Order {
     private final String id;
     private final String userId;
@@ -19,17 +18,6 @@ public class Order {
     @Setter
     private OrderState state;
 
-    private Order(String id, String userId, OrderSide side, OrderType type, Long price, Long quantity) {
-        this.id = id;
-        this.userId = userId;
-        this.side = side;
-        this.type = type;
-        this.price = price;
-        this.state = OrderState.NEW;
-        this.remainingQuantity = quantity;
-        this.timestamp = Instant.now();
-    }
-
     public static Order createLimitOrder(String id, String userId, OrderSide side, Long price, Long quantity) {
         if (price == null || price <= 0) {
             throw new IllegalArgumentException("Price must be a positive value for limit orders");
@@ -37,14 +25,30 @@ public class Order {
         if (quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
-        return new Order(id, userId, side, OrderType.LIMIT, price, quantity);
+        return Order.builder()
+                .id(id)
+                .userId(userId)
+                .side(side)
+                .type(OrderType.LIMIT)
+                .price(price)
+                .remainingQuantity(quantity)
+                .timestamp(Instant.now())
+                .build();
     }
-    
+
     public static Order createMarketOrder(String id, String userId, OrderSide side, Long quantity) {
         if (quantity == null || quantity <= 0) {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
-        return new Order(id, userId, side, OrderType.MARKET, null, quantity);
+        return Order.builder()
+                .id(id)
+                .userId(userId)
+                .side(side)
+                .type(OrderType.MARKET)
+                .price(null)
+                .remainingQuantity(quantity)
+                .timestamp(Instant.now())
+                .build();
     }
 
     public void reduceQuantity(long quantity) {
