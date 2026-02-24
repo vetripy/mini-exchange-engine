@@ -6,8 +6,8 @@ import org.trading.exchange.model.OrderSide;
 import java.util.UUID;
 
 public class OrderStub {
-    public static Order getValidBuyOrderWith(Long price, Long quantity) {
-        return new Order(
+    public static Order getValidLimitBuyOrderWith(Long price, Long quantity) {
+        return Order.createLimitOrder(
                 UUID.randomUUID().toString(),
                 "user1",
                 OrderSide.BUY,
@@ -16,12 +16,30 @@ public class OrderStub {
         );
     }
 
-    public static Order getValidSellOrderWith(Long price, Long quantity) {
-        return new Order(
+    public static Order getValidLimitSellOrderWith(Long price, Long quantity) {
+        return Order.createLimitOrder(
                 UUID.randomUUID().toString(),
                 "user2",
                 OrderSide.SELL,
                 price,
+                quantity
+        );
+    }
+
+    public static Order getValidMarketBuyOrderWith(Long quantity) {
+        return Order.createMarketOrder(
+                UUID.randomUUID().toString(),
+                "user1",
+                OrderSide.BUY,
+                quantity
+        );
+    }
+
+    public static Order getValidMarketSellOrderWith(Long quantity) {
+        return Order.createMarketOrder(
+                UUID.randomUUID().toString(),
+                "user2",
+                OrderSide.SELL,
                 quantity
         );
     }
