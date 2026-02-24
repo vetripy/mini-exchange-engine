@@ -8,8 +8,8 @@ import org.trading.exchange.model.Order;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.trading.exchange.stub.OrderStub.getValidBuyOrderWith;
-import static org.trading.exchange.stub.OrderStub.getValidSellOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidLimitBuyOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidLimitSellOrderWith;
 
 public class MatchingEngineTest {
 
@@ -45,7 +45,7 @@ public class MatchingEngineTest {
     void testSubmitNewOrderEvent() throws InterruptedException {
         // Given
         matchingEngine.start();
-        Order order = getValidBuyOrderWith(10L, 10L);
+        Order order = getValidLimitBuyOrderWith(10L, 10L);
         OrderEvent event = OrderEvent.newOrder(order);
 
         // When
@@ -62,7 +62,7 @@ public class MatchingEngineTest {
     @DisplayName("Test submitting an order event when engine is not running throws exception")
     void testSubmitEventWhenEngineNotRunning() {
         // Given
-        Order order = getValidBuyOrderWith(10L, 10L);
+        Order order = getValidLimitBuyOrderWith(10L, 10L);
         OrderEvent event = OrderEvent.newOrder(order);
 
         // When & Then
@@ -74,7 +74,7 @@ public class MatchingEngineTest {
     void testSubmitCancelOrderEvent() throws InterruptedException {
         // Given
         matchingEngine.start();
-        Order order = getValidBuyOrderWith(10L, 10L);
+        Order order = getValidLimitBuyOrderWith(10L, 10L);
 
         OrderEvent newOrderEvent = OrderEvent.newOrder(order);
         OrderEvent cancelOrderEvent = OrderEvent.cancelOrder(order.getId());
@@ -116,9 +116,9 @@ public class MatchingEngineTest {
         // Given
         matchingEngine.start();
 
-        Order buyOrder1 = getValidBuyOrderWith(10L, 5L);
-        Order buyOrder2 = getValidBuyOrderWith(9L, 5L);
-        Order sellOrder = getValidSellOrderWith(10L, 8L);
+        Order buyOrder1 = getValidLimitBuyOrderWith(10L, 5L);
+        Order buyOrder2 = getValidLimitBuyOrderWith(9L, 5L);
+        Order sellOrder = getValidLimitSellOrderWith(10L, 8L);
 
         OrderEvent event1 = OrderEvent.newOrder(buyOrder1);
         OrderEvent event2 = OrderEvent.newOrder(buyOrder2);
@@ -140,9 +140,9 @@ public class MatchingEngineTest {
         // Given
         matchingEngine.start();
 
-        Order sellOrder1 = getValidSellOrderWith(12L, 5L);
-        Order sellOrder2 = getValidSellOrderWith(11L, 5L);
-        Order buyOrder = getValidBuyOrderWith(12L, 8L);
+        Order sellOrder1 = getValidLimitSellOrderWith(12L, 5L);
+        Order sellOrder2 = getValidLimitSellOrderWith(11L, 5L);
+        Order buyOrder = getValidLimitBuyOrderWith(12L, 8L);
 
         // When
         matchingEngine.submit(OrderEvent.newOrder(sellOrder1));
