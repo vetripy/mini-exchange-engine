@@ -189,4 +189,57 @@ public class OrderBookTest {
         assertEquals(7L, marketSellOrder.getRemainingQuantity());
         assertEquals(CANCELLED, marketSellOrder.getState());
     }
+
+    @Test
+    @DisplayName("IOC order partially fills then cancels remainder")
+    void testIOCPartialFillCancelsRemainder() {
+        // build sell side depth
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L));
+
+        // add IOC buy for 5 @ 10 -> should fill 3 and cancel remaining 2
+        Order iocBuy = getValidIOCBuyOrderWith(10L, 5L);
+        orderBook.addOrder(iocBuy);
+
+        assertEquals(CANCELLED, iocBuy.getState());
+        assertEquals(2L, iocBuy.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("IOC order fully fills when liquidity is available")
+    void testIOCFullFill() {
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L));
+
+        Order iocBuy = getValidIOCBuyOrderWith(10L, 5L);
+        orderBook.addOrder(iocBuy);
+
+        assertEquals(FILLED, iocBuy.getState());
+        assertEquals(0L, iocBuy.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("FOK order cancels when insufficient liquidity at price")
+    void testFOKCancelsWhenInsufficient() {
+        // only 3 available at price 10
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L));
+
+        Order fokBuy = getValidFOKBuyOrderWith(10L, 5L);
+        orderBook.addOrder(fokBuy);
+
+        assertEquals(CANCELLED, fokBuy.getState());
+        assertEquals(5L, fokBuy.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("FOK order fills fully when sufficient liquidity")
+    void testFOKFillsWhenSufficient() {
+        // 5 available at price 10
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L));
+
+        Order fokBuy = getValidFOKBuyOrderWith(10L, 5L);
+        orderBook.addOrder(fokBuy);
+
+        assertEquals(FILLED, fokBuy.getState());
+        assertEquals(0L, fokBuy.getRemainingQuantity());
+    }
 }
