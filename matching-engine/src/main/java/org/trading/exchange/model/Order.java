@@ -19,7 +19,7 @@ public class Order {
     @Setter
     private OrderState state;
 
-    public Order(String id, String userId, OrderSide side, OrderType type, Long price, Long quantity) {
+    private Order(String id, String userId, OrderSide side, OrderType type, Long price, Long quantity) {
         this.id = id;
         this.userId = userId;
         this.side = side;
@@ -28,6 +28,23 @@ public class Order {
         this.state = OrderState.NEW;
         this.remainingQuantity = quantity;
         this.timestamp = Instant.now();
+    }
+
+    public static Order createLimitOrder(String id, String userId, OrderSide side, Long price, Long quantity) {
+        if (price == null || price <= 0) {
+            throw new IllegalArgumentException("Price must be a positive value for limit orders");
+        }
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be a positive value");
+        }
+        return new Order(id, userId, side, OrderType.LIMIT, price, quantity);
+    }
+    
+    public static Order createMarketOrder(String id, String userId, OrderSide side, Long quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be a positive value");
+        }
+        return new Order(id, userId, side, OrderType.MARKET, null, quantity);
     }
 
     public void reduceQuantity(long quantity) {
