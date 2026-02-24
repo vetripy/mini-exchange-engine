@@ -43,4 +43,44 @@ public class OrderStub {
                 quantity
         );
     }
+
+    public static Order getValidIOCBuyOrderWith(Long price, Long quantity) {
+        return Order.createIOCOrder(
+                UUID.randomUUID().toString(),
+                "user1",
+                OrderSide.BUY,
+                price,
+                quantity
+        );
+    }
+
+    public static Order getValidIOCSellOrderWith(Long price, Long quantity) {
+        return Order.createIOCOrder(
+                UUID.randomUUID().toString(),
+                "user2",
+                OrderSide.SELL,
+                price,
+                quantity
+        );
+    }
+
+    public static Order getValidFOKBuyOrderWith(Long price, Long quantity) {
+        return Order.createFOKOrder(
+                UUID.randomUUID().toString(),
+                "user1",
+                OrderSide.BUY,
+                price,
+                quantity
+        );
+    }
+
+    public static Order getValidFOKSellOrderWith(Long price, Long quantity) {
+        return Order.createFOKOrder(
+                UUID.randomUUID().toString(),
+                "user2",
+                OrderSide.SELL,
+                price,
+                quantity
+        );
+    }
 }
