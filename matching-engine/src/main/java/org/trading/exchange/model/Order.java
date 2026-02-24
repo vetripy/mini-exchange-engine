@@ -15,12 +15,15 @@ public class Order {
     private final String id;
     private final String userId;
     private final OrderSide side;
-    private final Long price;
-    private final Instant timestamp;
     private final OrderType type;
-    private Long remainingQuantity;
+    private final Long price;
+    @Builder.Default
+    private final Instant timestamp = Instant.now();
+    @Builder.Default
+    private Long remainingQuantity = 0L;
+    @Builder.Default
     @Setter
-    private OrderState state;
+    private OrderState state = OrderState.NEW;
 
     public static Order createLimitOrder(String id, String userId, OrderSide side, Long price, Long quantity) {
         if (price == null || price <= 0) {
@@ -50,6 +53,42 @@ public class Order {
                 .side(side)
                 .type(OrderType.MARKET)
                 .price(null)
+                .remainingQuantity(quantity)
+                .timestamp(Instant.now())
+                .build();
+    }
+
+    public static Order createIOCOrder(String id, String userId, OrderSide side, Long price, Long quantity) {
+        if (price == null || price <= 0) {
+            throw new IllegalArgumentException("Price must be a positive value for IOC orders");
+        }
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be a positive value");
+        }
+        return Order.builder()
+                .id(id)
+                .userId(userId)
+                .side(side)
+                .type(OrderType.IOC)
+                .price(price)
+                .remainingQuantity(quantity)
+                .timestamp(Instant.now())
+                .build();
+    }
+
+    public static Order createFOKOrder(String id, String userId, OrderSide side, Long price, Long quantity) {
+        if (price == null || price <= 0) {
+            throw new IllegalArgumentException("Price must be a positive value for FOK orders");
+        }
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("Quantity must be a positive value");
+        }
+        return Order.builder()
+                .id(id)
+                .userId(userId)
+                .side(side)
+                .type(OrderType.FOK)
+                .price(price)
                 .remainingQuantity(quantity)
                 .timestamp(Instant.now())
                 .build();
