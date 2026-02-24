@@ -3,6 +3,7 @@ package org.trading.exchange.orderbook;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderSide;
 import org.trading.exchange.model.OrderState;
+import org.trading.exchange.model.OrderType;
 
 import java.util.Comparator;
 import java.util.Deque;
@@ -12,7 +13,6 @@ import java.util.TreeMap;
 import java.util.List;
 import java.util.ArrayList;
 
-import static org.trading.exchange.model.OrderType.MARKET;
 
 public class OrderBook {
 
@@ -21,18 +21,57 @@ public class OrderBook {
     private final Map<String, Order> orderIndex = new HashMap<>();
 
     public void addOrder(Order order) {
+        switch (order.getType()) {
+            case MARKET -> handleMarket(order);
+            case LIMIT -> handleLimit(order);
+            case IOC -> handleIOC(order);
+            case FOK -> handleFOK(order);
+        }
+    }
+
+    private void handleMarket(Order order) {
         if (order.getSide() == OrderSide.BUY) {
-            if (order.getType() == MARKET) {
-                matchMarketBuy(order);
-            } else {
-                matchBuy(order);
-            }
+            matchMarketBuy(order);
         } else {
-            if (order.getType() == MARKET) {
-                matchMarketSell(order);
+            matchMarketSell(order);
+        }
+    }
+
+    private void handleLimit(Order order) {
+        if (order.getSide() == OrderSide.BUY) {
+            matchBuy(order);
+        } else {
+            matchSell(order);
+        }
+    }
+
+    private void handleFOK(Order order) {
+        boolean canFill = order.getSide() == OrderSide.BUY
+                ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
+                : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
+
+        if (canFill) {
+            if (order.getSide() == OrderSide.BUY) {
+                matchBuy(order);
             } else {
                 matchSell(order);
             }
+        } else {
+            order.setState(OrderState.CANCELLED);
+            System.out.println("FOK order cancelled due to insufficient liquidity");
+        }
+    }
+
+    private void handleIOC(Order order) {
+        if (order.getSide() == OrderSide.BUY) {
+            matchBuy(order);
+        } else {
+            matchSell(order);
+        }
+
+        if (order.getRemainingQuantity() > 0) {
+            order.setState(OrderState.CANCELLED);
+            System.out.println("IOC remainder cancelled");
         }
     }
 
@@ -91,7 +130,7 @@ public class OrderBook {
                 }
             }
         }
-        if (order.getRemainingQuantity() > 0) {
+        if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
             addToBook(buyOrders, order);
         }
     }
@@ -111,7 +150,7 @@ public class OrderBook {
                 }
             }
         }
-        if (order.getRemainingQuantity() > 0) {
+        if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
             addToBook(sellOrders, order);
         }
 
@@ -167,6 +206,34 @@ public class OrderBook {
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
         System.out.println("Executed trade: " + tradeQuantity + " qty @ " + sellOrder.getPrice() + " price");
+    }
+
+    private long availableSellLiquidity(Long priceLimit) {
+        Long total = 0L;
+
+        for (var entry : sellOrders.entrySet()) {
+            if (entry.getKey() > priceLimit) break;
+
+            for (Order o : entry.getValue()) {
+                total += o.getRemainingQuantity();
+            }
+        }
+
+        return total;
+    }
+
+    private long availableBuyLiquidity(Long priceLimit) {
+        Long total = 0L;
+
+        for (var entry : buyOrders.entrySet()) {
+            if (entry.getKey() < priceLimit) break;
+
+            for (Order o : entry.getValue()) {
+                total += o.getRemainingQuantity();
+            }
+        }
+
+        return total;
     }
 
     public void printDepth() {
