@@ -1,6 +1,7 @@
 package org.trading.exchange.engine;
 
 import org.trading.exchange.event.OrderEvent;
+import org.trading.exchange.listener.LoggingTradeListener;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.orderbook.OrderBook;
 
@@ -10,10 +11,17 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class MatchingEngine {
 
-    private final BlockingQueue<OrderEvent> events = new LinkedBlockingQueue<>();
-    private volatile boolean running = false;
+    private final BlockingQueue<OrderEvent> events;
+    private final OrderBook orderBook;
+    private volatile boolean running;
     private Thread engineThread;
-    private final OrderBook orderBook = new OrderBook();
+
+    MatchingEngine() {
+        this.orderBook = new OrderBook();
+        this.running = false;
+        this.events = new LinkedBlockingQueue<>();
+        orderBook.addTradeListener(new LoggingTradeListener());
+    }
 
     public void start() {
         if (running) {
