@@ -205,7 +205,7 @@ public class OrderBook {
         long tradeQuantity = Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
-        Long tradePrice = sellOrder.getPrice();
+        Long tradePrice = sellOrder.getPrice() == null ? buyOrder.getPrice() : sellOrder.getPrice();
         publishTrade(buyOrder, sellOrder, tradePrice, tradeQuantity);
     }
 
