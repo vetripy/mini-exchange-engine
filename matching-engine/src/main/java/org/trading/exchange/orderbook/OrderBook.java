@@ -1,9 +1,7 @@
 package org.trading.exchange.orderbook;
 
-import org.trading.exchange.model.Order;
-import org.trading.exchange.model.OrderSide;
-import org.trading.exchange.model.OrderState;
-import org.trading.exchange.model.OrderType;
+import org.trading.exchange.event.TradeListener;
+import org.trading.exchange.model.*;
 
 import java.util.Comparator;
 import java.util.Deque;
@@ -19,6 +17,8 @@ public class OrderBook {
     private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, Deque<Order>> sellOrders = new TreeMap<>();
     private final Map<String, Order> orderIndex = new HashMap<>();
+    private final List<TradeListener> tradeListeners = new ArrayList<>();
+
 
     public void addOrder(Order order) {
         switch (order.getType()) {
@@ -205,7 +205,23 @@ public class OrderBook {
         long tradeQuantity = Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
-        System.out.println("Executed trade: " + tradeQuantity + " qty @ " + sellOrder.getPrice() + " price");
+        Long tradePrice = sellOrder.getPrice();
+        publishTrade(buyOrder, sellOrder, tradePrice, tradeQuantity);
+    }
+
+    private void publishTrade(Order buyOrder, Order sellOrder, Long tradePrice, long tradeQuantity) {
+        Trade trade = Trade.builder()
+                .tradeId(java.util.UUID.randomUUID().toString())
+                .buyOrderId(buyOrder.getId())
+                .sellOrderId(sellOrder.getId())
+                .price(tradePrice)
+                .quantity(tradeQuantity)
+                .timestamp(System.currentTimeMillis())
+                .build();
+
+        for (TradeListener listener : tradeListeners) {
+            listener.onTrade(trade);
+        }
     }
 
     private long availableSellLiquidity(Long priceLimit) {
@@ -234,6 +250,10 @@ public class OrderBook {
         }
 
         return total;
+    }
+
+    public void addTradeListener(TradeListener listener) {
+        tradeListeners.add(listener);
     }
 
     public void printDepth() {
