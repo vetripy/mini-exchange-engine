@@ -1,7 +1,8 @@
 package org.trading.exchange.engine;
 
 import org.trading.exchange.event.OrderEvent;
-import org.trading.exchange.listener.LoggingTradeListener;
+import org.trading.exchange.listener.impl.LoggingOrderUpdateListener;
+import org.trading.exchange.listener.impl.LoggingTradeListener;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.orderbook.OrderBook;
 
@@ -21,6 +22,7 @@ public class MatchingEngine {
         this.running = false;
         this.events = new LinkedBlockingQueue<>();
         orderBook.addTradeListener(new LoggingTradeListener());
+        orderBook.addOrderUpdateListener(new LoggingOrderUpdateListener());
     }
 
     public void start() {

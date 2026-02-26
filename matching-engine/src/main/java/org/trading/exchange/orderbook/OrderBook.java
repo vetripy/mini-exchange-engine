@@ -1,6 +1,7 @@
 package org.trading.exchange.orderbook;
 
-import org.trading.exchange.event.TradeListener;
+import org.trading.exchange.listener.OrderUpdateListener;
+import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.*;
 
 import java.util.Comparator;
@@ -18,9 +19,11 @@ public class OrderBook {
     private final TreeMap<Long, Deque<Order>> sellOrders = new TreeMap<>();
     private final Map<String, Order> orderIndex = new HashMap<>();
     private final List<TradeListener> tradeListeners = new ArrayList<>();
+    private final List<OrderUpdateListener> orderUpdateListeners = new ArrayList<>();
 
 
     public void addOrder(Order order) {
+        publishOrderUpdate(order);
         switch (order.getType()) {
             case MARKET -> handleMarket(order);
             case LIMIT -> handleLimit(order);
@@ -93,6 +96,7 @@ public class OrderBook {
             }
         }
         order.setState(OrderState.CANCELLED);
+        publishOrderUpdate(order);
         orderIndex.remove(orderId);
         System.out.println("Cancelled order: " + orderId);
 
@@ -206,6 +210,8 @@ public class OrderBook {
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
         Long tradePrice = sellOrder.getPrice() == null ? buyOrder.getPrice() : sellOrder.getPrice();
+        publishOrderUpdate(buyOrder);
+        publishOrderUpdate(sellOrder);
         publishTrade(buyOrder, sellOrder, tradePrice, tradeQuantity);
     }
 
@@ -221,6 +227,19 @@ public class OrderBook {
 
         for (TradeListener listener : tradeListeners) {
             listener.onTrade(trade);
+        }
+    }
+
+    private void publishOrderUpdate(Order order) {
+        OrderUpdate update = OrderUpdate.builder()
+                .orderId(order.getId())
+                .orderState(order.getState())
+                .remainingQuantity(order.getRemainingQuantity())
+                .timestamp(System.nanoTime())
+                .build();
+
+        for (OrderUpdateListener listener : orderUpdateListeners) {
+            listener.onOrderUpdate(update);
         }
     }
 
@@ -254,6 +273,10 @@ public class OrderBook {
 
     public void addTradeListener(TradeListener listener) {
         tradeListeners.add(listener);
+    }
+
+    public void addOrderUpdateListener(OrderUpdateListener listener) {
+        orderUpdateListeners.add(listener);
     }
 
     public void printDepth() {

@@ -1,4 +1,4 @@
-package org.trading.exchange.event;
+package org.trading.exchange.listener;
 
 import org.trading.exchange.model.Trade;
 
