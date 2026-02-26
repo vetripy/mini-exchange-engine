@@ -1,6 +1,6 @@
-package org.trading.exchange.listener;
+package org.trading.exchange.listener.impl;
 
-import org.trading.exchange.event.TradeListener;
+import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.Trade;
 
 
