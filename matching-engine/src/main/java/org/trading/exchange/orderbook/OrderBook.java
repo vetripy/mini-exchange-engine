@@ -1,8 +1,9 @@
 package org.trading.exchange.orderbook;
 
-import org.trading.exchange.listener.OrderUpdateListener;
-import org.trading.exchange.listener.TradeListener;
+import org.trading.exchange.event.EngineEventHandler;
+import org.trading.exchange.event.OrderUpdate;
 import org.trading.exchange.model.*;
+import org.trading.exchange.util.OrderBookUtil;
 
 import java.util.Comparator;
 import java.util.Deque;
@@ -18,12 +19,15 @@ public class OrderBook {
     private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, Deque<Order>> sellOrders = new TreeMap<>();
     private final Map<String, Order> orderIndex = new HashMap<>();
-    private final List<TradeListener> tradeListeners = new ArrayList<>();
-    private final List<OrderUpdateListener> orderUpdateListeners = new ArrayList<>();
+    private final EngineEventHandler engineEventHandler;
+
+    public OrderBook(EngineEventHandler engineEventHandler) {
+        this.engineEventHandler = engineEventHandler;
+    }
 
 
     public void addOrder(Order order) {
-        publishOrderUpdate(order);
+        emitOrderUpdate(order);
         switch (order.getType()) {
             case MARKET -> handleMarket(order);
             case LIMIT -> handleLimit(order);
@@ -96,7 +100,7 @@ public class OrderBook {
             }
         }
         order.setState(OrderState.CANCELLED);
-        publishOrderUpdate(order);
+        emitOrderUpdate(order);
         orderIndex.remove(orderId);
         System.out.println("Cancelled order: " + orderId);
 
@@ -128,7 +132,7 @@ public class OrderBook {
             executeTrade(order, sellOrder);
             if (sellOrder.getRemainingQuantity() == 0) {
                 queue.poll();
-                orderIndex.remove(sellOrder.getId());
+                orderIndex.remove(sellOrder.getOrderId());
                 if (queue.isEmpty()) {
                     sellOrders.pollFirstEntry();
                 }
@@ -148,7 +152,7 @@ public class OrderBook {
             executeTrade(buyOrder, order);
             if (buyOrder.getRemainingQuantity() == 0) {
                 queue.poll();
-                orderIndex.remove(buyOrder.getId());
+                orderIndex.remove(buyOrder.getOrderId());
                 if (queue.isEmpty()) {
                     buyOrders.pollFirstEntry();
                 }
@@ -167,7 +171,7 @@ public class OrderBook {
             executeTrade(order, bestSell);
             if (bestSell.getRemainingQuantity() == 0) {
                 queue.poll();
-                orderIndex.remove(bestSell.getId());
+                orderIndex.remove(bestSell.getOrderId());
                 if (queue.isEmpty()) {
                     sellOrders.pollFirstEntry();
                 }
@@ -187,7 +191,7 @@ public class OrderBook {
             executeTrade(bestBuy, order);
             if (bestBuy.getRemainingQuantity() == 0) {
                 queue.poll();
-                orderIndex.remove(bestBuy.getId());
+                orderIndex.remove(bestBuy.getOrderId());
                 if (queue.isEmpty()) {
                     buyOrders.pollFirstEntry();
                 }
@@ -202,7 +206,7 @@ public class OrderBook {
 
     private void addToBook(TreeMap<Long, Deque<Order>> book, Order order) {
         book.computeIfAbsent(order.getPrice(), k -> new java.util.LinkedList<>()).offerLast(order);
-        orderIndex.put(order.getId(), order);
+        orderIndex.put(order.getOrderId(), order);
     }
 
     private void executeTrade(Order buyOrder, Order sellOrder) {
@@ -210,37 +214,9 @@ public class OrderBook {
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
         Long tradePrice = sellOrder.getPrice() == null ? buyOrder.getPrice() : sellOrder.getPrice();
-        publishOrderUpdate(buyOrder);
-        publishOrderUpdate(sellOrder);
-        publishTrade(buyOrder, sellOrder, tradePrice, tradeQuantity);
-    }
-
-    private void publishTrade(Order buyOrder, Order sellOrder, Long tradePrice, long tradeQuantity) {
-        Trade trade = Trade.builder()
-                .tradeId(java.util.UUID.randomUUID().toString())
-                .buyOrderId(buyOrder.getId())
-                .sellOrderId(sellOrder.getId())
-                .price(tradePrice)
-                .quantity(tradeQuantity)
-                .timestamp(System.currentTimeMillis())
-                .build();
-
-        for (TradeListener listener : tradeListeners) {
-            listener.onTrade(trade);
-        }
-    }
-
-    private void publishOrderUpdate(Order order) {
-        OrderUpdate update = OrderUpdate.builder()
-                .orderId(order.getId())
-                .orderState(order.getState())
-                .remainingQuantity(order.getRemainingQuantity())
-                .timestamp(System.nanoTime())
-                .build();
-
-        for (OrderUpdateListener listener : orderUpdateListeners) {
-            listener.onOrderUpdate(update);
-        }
+        emitOrderUpdate(buyOrder);
+        emitOrderUpdate(sellOrder);
+        emitTrade(buyOrder, sellOrder, tradePrice, tradeQuantity);
     }
 
     private long availableSellLiquidity(Long priceLimit) {
@@ -271,52 +247,33 @@ public class OrderBook {
         return total;
     }
 
-    public void addTradeListener(TradeListener listener) {
-        tradeListeners.add(listener);
+    private void emitOrderUpdate(Order order) {
+
+        OrderUpdate update = OrderUpdate.builder()
+                .orderId(order.getOrderId())
+                .orderState(order.getState())
+                .remainingQuantity(order.getRemainingQuantity())
+                .timestamp(System.nanoTime())
+                .build();
+
+        engineEventHandler.onOrderUpdate(update);
     }
 
-    public void addOrderUpdateListener(OrderUpdateListener listener) {
-        orderUpdateListeners.add(listener);
+    private void emitTrade(Order buyOrder, Order sellOrder, Long price, Long quantity) {
+        Trade trade = Trade.builder()
+                .buyOrderId(buyOrder.getOrderId())
+                .sellOrderId(sellOrder.getOrderId())
+                .tradePrice(price)
+                .quantity(quantity)
+                .timestamp(System.currentTimeMillis())
+                .build();
+
+        engineEventHandler.onTrade(trade);
+
     }
 
-    public void printDepth() {
-
-        System.out.println("\n================ ORDER BOOK ================");
-
-        System.out.println("\nSELL SIDE");
-        System.out.printf("%-10s %-10s%n", "Price", "Quantity");
-
-        for (var entry : sellOrders.entrySet()) {
-            long totalQty = entry.getValue()
-                    .stream()
-                    .mapToLong(Order::getRemainingQuantity)
-                    .sum();
-
-            if (totalQty > 0) {
-                System.out.printf("%-10d %-10d%n",
-                        entry.getKey(),
-                        totalQty);
-            }
-        }
-
-        System.out.println("\n--------------------------------------------");
-
-        System.out.println("\nBUY SIDE");
-        System.out.printf("%-10s %-10s%n", "Price", "Quantity");
-
-        for (var entry : buyOrders.entrySet()) {
-            long totalQty = entry.getValue()
-                    .stream()
-                    .mapToLong(Order::getRemainingQuantity)
-                    .sum();
-
-            if (totalQty > 0) {
-                System.out.printf("%-10d %-10d%n",
-                        entry.getKey(),
-                        totalQty);
-            }
-        }
-
-        System.out.println("\n============================================\n");
+    public void displayBook() {
+        OrderBookUtil.printDepth(this.getBuySnapshot(), this.getSellSnapshot());
     }
+
 }
