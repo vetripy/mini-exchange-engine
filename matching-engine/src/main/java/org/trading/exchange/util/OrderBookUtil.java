@@ -1,7 +1,6 @@
 package org.trading.exchange.util;
 
 import org.trading.exchange.model.Order;
-import org.trading.exchange.orderbook.OrderBook;
 
 import java.util.List;
 import java.util.Map;
