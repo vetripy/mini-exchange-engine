@@ -1,7 +1,7 @@
 package org.trading.exchange.listener.impl;
 
 import org.trading.exchange.listener.OrderUpdateListener;
-import org.trading.exchange.model.OrderUpdate;
+import org.trading.exchange.event.OrderUpdate;
 
 public class LoggingOrderUpdateListener implements OrderUpdateListener {
 

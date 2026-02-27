@@ -7,10 +7,11 @@ import lombok.Builder;
 @Builder
 public class Trade {
 
+    private final long sequence;
     private final String tradeId;
     private final String buyOrderId;
     private final String sellOrderId;
-    private final long price;
+    private final long tradePrice;
     private final long quantity;
     private final long timestamp;
 }
