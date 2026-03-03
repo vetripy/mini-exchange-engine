@@ -12,7 +12,7 @@ import java.time.Instant;
 @ToString
 @Builder(access = AccessLevel.PRIVATE)
 public class Order {
-    private final String id;
+    private final String orderId;
     private final String userId;
     private final OrderSide side;
     private final OrderType type;
@@ -33,7 +33,7 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder()
-                .id(id)
+                .orderId(id)
                 .userId(userId)
                 .side(side)
                 .type(OrderType.LIMIT)
@@ -48,7 +48,7 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder()
-                .id(id)
+                .orderId(id)
                 .userId(userId)
                 .side(side)
                 .type(OrderType.MARKET)
@@ -66,7 +66,7 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder()
-                .id(id)
+                .orderId(id)
                 .userId(userId)
                 .side(side)
                 .type(OrderType.IOC)
@@ -84,7 +84,7 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder()
-                .id(id)
+                .orderId(id)
                 .userId(userId)
                 .side(side)
                 .type(OrderType.FOK)

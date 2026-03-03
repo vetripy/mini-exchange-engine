@@ -11,6 +11,6 @@ public class LoggingTradeListener implements TradeListener {
         System.out.println("TRADE EXECUTED → "
                 + trade.getQuantity()
                 + " @ "
-                + trade.getPrice());
+                + trade.getTradePrice());
     }
 }

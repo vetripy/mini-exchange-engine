@@ -3,7 +3,10 @@ package org.trading.exchange.orderbook;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.model.Trade;
 
 import java.util.UUID;
 
@@ -18,7 +21,17 @@ public class OrderBookTest {
 
     @BeforeEach
     void setUp() {
-        orderBook = new OrderBook();
+        orderBook = new OrderBook(new EngineEventHandler() {
+            @Override
+            public void onTrade(Trade event) {
+
+            }
+
+            @Override
+            public void onOrderUpdate(OrderUpdate event) {
+
+            }
+        });
     }
 
     @Test
@@ -55,7 +68,7 @@ public class OrderBookTest {
         orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L));
         orderBook.addOrder(getValidLimitBuyOrderWith(10L, 3L));
 
-        orderBook.printDepth();
+        orderBook.displayBook();
 
         //Then
         assertEquals(0, orderBook.getBuySnapshot().size());
@@ -94,7 +107,7 @@ public class OrderBookTest {
         //Given
         Order buyOrder = getValidLimitBuyOrderWith(10L, 10L);
         orderBook.addOrder(buyOrder);
-        orderBook.cancelOrder(buyOrder.getId());
+        orderBook.cancelOrder(buyOrder.getOrderId());
 
         //Then
         assertEquals(0, orderBook.getBuySnapshot().size());
@@ -107,7 +120,7 @@ public class OrderBookTest {
         Order buyOrder = getValidLimitBuyOrderWith(10L, 10L);
         orderBook.addOrder(buyOrder);
         orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L));
-        orderBook.cancelOrder(buyOrder.getId());
+        orderBook.cancelOrder(buyOrder.getOrderId());
 
         //Then
         assertEquals(0, orderBook.getBuySnapshot().size());
@@ -123,9 +136,9 @@ public class OrderBookTest {
 
         //Then
         try {
-            orderBook.cancelOrder(buyOrder.getId());
+            orderBook.cancelOrder(buyOrder.getOrderId());
         } catch (IllegalArgumentException e) {
-            assertEquals("Order not found: " + buyOrder.getId(), e.getMessage());
+            assertEquals("Order not found: " + buyOrder.getOrderId(), e.getMessage());
         }
     }
 

@@ -77,7 +77,7 @@ public class MatchingEngineTest {
         Order order = getValidLimitBuyOrderWith(10L, 10L);
 
         OrderEvent newOrderEvent = OrderEvent.newOrder(order);
-        OrderEvent cancelOrderEvent = OrderEvent.cancelOrder(order.getId());
+        OrderEvent cancelOrderEvent = OrderEvent.cancelOrder(order.getOrderId());
 
         // When
         matchingEngine.submit(newOrderEvent);
