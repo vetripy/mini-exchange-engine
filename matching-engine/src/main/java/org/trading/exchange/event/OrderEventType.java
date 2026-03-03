@@ -1,6 +1,6 @@
 package org.trading.exchange.event;
 
-public enum EventType {
+public enum OrderEventType {
     NEW_ORDER,
     CANCEL_ORDER
 }
