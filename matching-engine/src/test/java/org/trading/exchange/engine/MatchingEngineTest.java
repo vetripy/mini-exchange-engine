@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.trading.exchange.event.OrderEvent;
+import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.Order;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -17,7 +18,7 @@ public class MatchingEngineTest {
 
     @BeforeEach
     void setUp() {
-        matchingEngine = new MatchingEngine();
+        matchingEngine = new MatchingEngine(EngineMode.SYNC);
     }
 
     @Test

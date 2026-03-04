@@ -7,6 +7,7 @@ import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.listener.impl.LoggingOrderUpdateListener;
 import org.trading.exchange.listener.impl.LoggingTradeListener;
+import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.event.OrderUpdate;
 import org.trading.exchange.model.Trade;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 
 
@@ -24,40 +26,46 @@ public class MatchingEngine implements EngineEventHandler {
     private final BlockingQueue<OrderEvent> inboundEvents;
     private final BlockingQueue<EngineEvent> outboundEvents;
     private final OrderBook orderBook;
-    private final List<TradeListener> tradeListeners = new ArrayList<>();
-    private final List<OrderUpdateListener> orderUpdateListeners = new ArrayList<>();
+
+    private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
+    private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
+
+    private final EngineMode mode;
+
     private volatile boolean running;
     private Thread engineThread;
+    private Thread publisherThread;
 
     private long sequence = 0L;
 
-
-    MatchingEngine() {
+    public MatchingEngine(EngineMode mode) {
+        this.mode = mode;
+        this.inboundEvents = new LinkedBlockingQueue<>();
+        this.outboundEvents = new ArrayBlockingQueue<>(10_000);
         this.orderBook = new OrderBook(this);
         this.running = false;
-        this.inboundEvents = new LinkedBlockingQueue<>();
-        this.outboundEvents = new ArrayBlockingQueue<>(10000);
-        Thread publisherThread = new Thread(this::publishLoop);
-        publisherThread.start();
-        this.addTradeListener(new LoggingTradeListener());
-        this.addOrderUpdateListener(new LoggingOrderUpdateListener());
     }
 
-
-    public void start() {
+    public synchronized void start() {
         if (running) {
-            throw new IllegalStateException("Engine is already running");
+            throw new IllegalStateException("Engine already running");
         }
+
         running = true;
-        engineThread = new Thread(this::run);
-        engineThread.setName("engine-thread");
+
+        engineThread = new Thread(this::engineLoop, "engine-thread");
         engineThread.start();
+
+        if (mode == EngineMode.ASYNC) {
+            publisherThread = new Thread(this::publishLoop, "publisher-thread");
+            publisherThread.start();
+        }
     }
 
-    private void run() {
+    private void engineLoop() {
         while (running) {
             try {
-                OrderEvent event = inboundEvents.take(); // blocks
+                OrderEvent event = inboundEvents.take();
                 process(event);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -90,12 +98,20 @@ public class MatchingEngine implements EngineEventHandler {
         inboundEvents.put(event);
     }
 
-    public void stop() {
+    public synchronized void stop() throws InterruptedException {
         if (!running) {
-            throw new IllegalStateException("Engine is not running");
+            throw new IllegalStateException("Engine not running");
         }
+
         running = false;
+
         engineThread.interrupt();
+        engineThread.join();
+
+        if (publisherThread != null) {
+            publisherThread.interrupt();
+            publisherThread.join();
+        }
     }
 
     private long nextSequence() {
@@ -106,7 +122,7 @@ public class MatchingEngine implements EngineEventHandler {
     public void onTrade(Trade event) throws InterruptedException {
         Trade trade = Trade.builder()
                 .sequence(nextSequence())
-                .tradeId(java.util.UUID.randomUUID().toString())
+                .tradeId(event.getTradeId())
                 .buyOrderId(event.getBuyOrderId())
                 .sellOrderId(event.getSellOrderId())
                 .tradePrice(event.getTradePrice())
@@ -114,15 +130,22 @@ public class MatchingEngine implements EngineEventHandler {
                 .timestamp(System.currentTimeMillis())
                 .build();
 
-        outboundEvents.put(EngineEvent.builder()
+        EngineEvent engineEvent = EngineEvent.builder()
                 .sequenceNumber(trade.getSequence())
                 .type(EngineEvent.Type.TRADE)
                 .data(trade)
-                .build());
+                .build();
+
+        if (mode == EngineMode.ASYNC) {
+            outboundEvents.put(engineEvent);
+        } else {
+            publishDirect(engineEvent);
+        }
     }
 
     @Override
     public void onOrderUpdate(OrderUpdate event) throws InterruptedException {
+
         OrderUpdate update = OrderUpdate.builder()
                 .sequence(nextSequence())
                 .orderId(event.getOrderId())
@@ -131,11 +154,17 @@ public class MatchingEngine implements EngineEventHandler {
                 .timestamp(System.nanoTime())
                 .build();
 
-        outboundEvents.put(EngineEvent.builder()
+        EngineEvent engineEvent = EngineEvent.builder()
                 .sequenceNumber(update.getSequence())
                 .type(EngineEvent.Type.ORDER_UPDATE)
                 .data(update)
-                .build());
+                .build();
+
+        if (mode == EngineMode.ASYNC) {
+            outboundEvents.put(engineEvent);
+        } else {
+            publishDirect(engineEvent);
+        }
     }
 
     public void addTradeListener(TradeListener listener) {
@@ -148,19 +177,23 @@ public class MatchingEngine implements EngineEventHandler {
 
     private void publishLoop() {
         try {
-            while (true) {
-                EngineEvent event = outboundEvents.take(); // blocks
-                switch (event.getType()) {
-                    case TRADE -> tradeListeners.forEach(listener -> {
-                        listener.onTrade((Trade) event.getData());
-                    });
-                    case ORDER_UPDATE -> orderUpdateListeners.forEach(listener -> {
-                        listener.onOrderUpdate((OrderUpdate) event.getData());
-                    });
-                }
+            while (running || !outboundEvents.isEmpty()) {
+                EngineEvent event = outboundEvents.take();
+                publishDirect(event);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private void publishDirect(EngineEvent event) {
+        switch (event.getType()) {
+            case TRADE -> tradeListeners.forEach(l ->
+                    l.onTrade((Trade) event.getData())
+            );
+            case ORDER_UPDATE -> orderUpdateListeners.forEach(l ->
+                    l.onOrderUpdate((OrderUpdate) event.getData())
+            );
         }
     }
 }
