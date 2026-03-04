@@ -5,15 +5,13 @@ import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderEvent;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
-import org.trading.exchange.listener.impl.LoggingOrderUpdateListener;
-import org.trading.exchange.listener.impl.LoggingTradeListener;
 import org.trading.exchange.model.EngineMode;
+import org.trading.exchange.model.EngineState;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.event.OrderUpdate;
 import org.trading.exchange.model.Trade;
 import org.trading.exchange.orderbook.OrderBook;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -29,10 +27,10 @@ public class MatchingEngine implements EngineEventHandler {
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
+    private final List<EngineStateListener> stateListeners = new CopyOnWriteArrayList<>();
 
     private final EngineMode mode;
-
-    private volatile boolean running;
+    private volatile EngineState state;
     private Thread engineThread;
     private Thread publisherThread;
 
@@ -40,18 +38,27 @@ public class MatchingEngine implements EngineEventHandler {
 
     public MatchingEngine(EngineMode mode) {
         this.mode = mode;
+        this.state = EngineState.NEW;
         this.inboundEvents = new LinkedBlockingQueue<>();
         this.outboundEvents = new ArrayBlockingQueue<>(10_000);
         this.orderBook = new OrderBook(this);
-        this.running = false;
+    }
+
+    private synchronized void transitionTo(EngineState newState, Throwable cause) {
+        EngineState oldState = this.state;
+        this.state = newState;
+
+        stateListeners.forEach(listener ->
+                listener.onStateChange(oldState, newState, cause)
+        );
     }
 
     public synchronized void start() {
-        if (running) {
-            throw new IllegalStateException("Engine already running");
+        if (this.state != EngineState.NEW && this.state != EngineState.STOPPED) {
+            throw new IllegalStateException("Engine can't be started from state: " + this.state);
         }
 
-        running = true;
+        transitionTo(EngineState.RUNNING, null);
 
         engineThread = new Thread(this::engineLoop, "engine-thread");
         engineThread.start();
@@ -63,7 +70,7 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     private void engineLoop() {
-        while (running) {
+        while (this.state == EngineState.RUNNING) {
             try {
                 OrderEvent event = inboundEvents.take();
                 process(event);
@@ -92,21 +99,21 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     public void submit(OrderEvent event) throws InterruptedException {
-        if (!running) {
+        if (this.state != EngineState.RUNNING) {
             throw new IllegalStateException("Engine is not running");
         }
         inboundEvents.put(event);
     }
 
     public synchronized void stop() throws InterruptedException {
-        if (!running) {
+        if (this.state != EngineState.RUNNING) {
             throw new IllegalStateException("Engine not running");
         }
 
-        running = false;
-
+        transitionTo(EngineState.STOPPING, null);
         engineThread.interrupt();
         engineThread.join();
+        transitionTo(EngineState.STOPPED, null);
 
         if (publisherThread != null) {
             publisherThread.interrupt();
@@ -175,9 +182,13 @@ public class MatchingEngine implements EngineEventHandler {
         orderUpdateListeners.add(listener);
     }
 
+    public void addStateListener(EngineStateListener listener) {
+        stateListeners.add(listener);
+    }
+
     private void publishLoop() {
         try {
-            while (running || !outboundEvents.isEmpty()) {
+            while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
                 EngineEvent event = outboundEvents.take();
                 publishDirect(event);
             }
