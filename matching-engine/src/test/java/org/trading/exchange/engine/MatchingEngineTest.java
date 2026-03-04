@@ -1,61 +1,78 @@
 package org.trading.exchange.engine;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.trading.exchange.event.OrderEvent;
+import org.trading.exchange.event.OrderUpdate;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.model.OrderState;
+import org.trading.exchange.model.Trade;
+import org.trading.exchange.utils.TestOrderUpdateListener;
+import org.trading.exchange.utils.TestTradeListener;
 
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.util.ArrayList;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
 import static org.trading.exchange.stub.OrderStub.getValidLimitBuyOrderWith;
 import static org.trading.exchange.stub.OrderStub.getValidLimitSellOrderWith;
 
-public class MatchingEngineTest {
+class MatchingEngineTest {
 
-    private MatchingEngine matchingEngine;
+    private MatchingEngine engine;
+    private TestTradeListener tradeListener;
+    private TestOrderUpdateListener orderUpdateListener;
 
     @BeforeEach
-    void setUp() {
-        matchingEngine = new MatchingEngine(EngineMode.SYNC);
+    void setup() {
+        engine = new MatchingEngine(EngineMode.SYNC);
+        tradeListener = new TestTradeListener();
+        orderUpdateListener = new TestOrderUpdateListener();
+
+        engine.addTradeListener(tradeListener);
+        engine.addOrderUpdateListener(orderUpdateListener);
+        engine.start();
+    }
+
+    @AfterEach
+    void tearDown() throws InterruptedException {
+        engine.stop();
     }
 
     @Test
-    @DisplayName("Test starting the matching engine")
-    void testStartEngine() {
-        // Given & When
-        matchingEngine.start();
-
-        // Then
-        assertTrue(true); // Engine started without throwing exception
+    @DisplayName("Test starting the matching engine twice throws exception")
+    void startTwiceThrows() {
+        assertThrows(IllegalStateException.class, () -> engine.start());
     }
 
     @Test
-    @DisplayName("Test starting an already running engine throws exception")
-    void testStartEngineWhenAlreadyRunning() {
-        // Given
-        matchingEngine.start();
-
-        // When & Then
-        assertThrows(IllegalStateException.class, () -> matchingEngine.start());
+    @DisplayName("Test stopping the matching engine twice throws exception")
+    void stopWhenNotRunningThrows() throws InterruptedException {
+        engine.stop();
+        assertThrows(IllegalStateException.class, () -> engine.stop());
     }
 
     @Test
-    @DisplayName("Test submitting a new order event when engine is running")
-    void testSubmitNewOrderEvent() throws InterruptedException {
-        // Given
-        matchingEngine.start();
-        Order order = getValidLimitBuyOrderWith(10L, 10L);
-        OrderEvent event = OrderEvent.newOrder(order);
+    @DisplayName("Test simple match produces a trade")
+    void simpleMatchProducesTrade() throws Exception {
 
-        matchingEngine.submit(event);
+        Order buy = getValidLimitBuyOrderWith(100L, 5L);
+        Order sell = getValidLimitSellOrderWith(100L, 5L);
 
-        // Give engine time to process
-        Thread.sleep(100);
+        engine.submit(OrderEvent.newOrder(buy));
+        engine.submit(OrderEvent.newOrder(sell));
 
-        // Then
-        assertTrue(true);
+        assertEquals(1, tradeListener.getTrades().size());
+
+        Trade trade = tradeListener.getTrades().getFirst();
+
+        assertEquals(100L, trade.getTradePrice());
+        assertEquals(5L, trade.getQuantity());
+        assertEquals(buy.getOrderId(), trade.getBuyOrderId());
+        assertEquals(sell.getOrderId(), trade.getSellOrderId());
     }
 
     @Test
@@ -66,92 +83,83 @@ public class MatchingEngineTest {
         OrderEvent event = OrderEvent.newOrder(order);
 
         // When & Then
-        assertThrows(IllegalStateException.class, () -> matchingEngine.submit(event));
+        assertThrows(IllegalStateException.class, () -> engine.submit(event));
     }
 
     @Test
-    @DisplayName("Test submitting a cancel order event")
-    void testSubmitCancelOrderEvent() throws InterruptedException {
-        // Given
-        matchingEngine.start();
-        Order order = getValidLimitBuyOrderWith(10L, 10L);
+    void partialFillUpdatesStateCorrectly() throws Exception {
 
-        OrderEvent newOrderEvent = OrderEvent.newOrder(order);
-        OrderEvent cancelOrderEvent = OrderEvent.cancelOrder(order.getOrderId());
+        Order buy = getValidLimitBuyOrderWith(100L, 10L);
+        Order sell = getValidLimitSellOrderWith(100L, 4L);
 
-        // When
-        matchingEngine.submit(newOrderEvent);
-        Thread.sleep(100); // Give engine time to process
-        matchingEngine.submit(cancelOrderEvent);
+        engine.submit(OrderEvent.newOrder(buy));
+        engine.submit(OrderEvent.newOrder(sell));
 
-        // Then
-        Thread.sleep(100); // Give engine time to process
-        assertTrue(true); // Cancel event processed without exceptione
+        assertEquals(1, tradeListener.getTrades().size());
+
+        Trade trade = tradeListener.getTrades().getFirst();
+        assertEquals(4L, trade.getQuantity());
+
+        OrderUpdate lastUpdate = orderUpdateListener.latest();
+        assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
+        assertEquals(6L, lastUpdate.getRemainingQuantity());
     }
 
     @Test
-    @DisplayName("Test stopping the matching engine")
-    void testStopEngine() throws InterruptedException {
-        // Given
-        matchingEngine.start();
+    void cancelOrderEmitsCancelledState() throws Exception {
 
-        // When
-        matchingEngine.stop();
+        Order buy = getValidLimitBuyOrderWith(100L, 5L);
 
-        // Then
-        Thread.sleep(100); // Give engine time to stop
-        assertTrue(true); // Engine stopped without throwing exception
+        engine.submit(OrderEvent.newOrder(buy));
+        engine.submit(OrderEvent.cancelOrder(buy.getOrderId()));
+
+        OrderUpdate last = orderUpdateListener.latest();
+
+        assertEquals(OrderState.CANCELLED, last.getOrderState());
+        assertEquals(0L, last.getRemainingQuantity());
     }
 
     @Test
-    @DisplayName("Test stopping an engine that is not running throws exception")
-    void testStopEngineWhenNotRunning() {
-        // When & Then
-        assertThrows(IllegalStateException.class, () -> matchingEngine.stop());
+    void sequenceNumbersAreStrictlyIncreasing() throws Exception {
+
+        Order buy = getValidLimitBuyOrderWith(100L, 5L);
+        Order sell = getValidLimitSellOrderWith(100L, 5L);
+
+        engine.submit(OrderEvent.newOrder(buy));
+        engine.submit(OrderEvent.newOrder(sell));
+
+        List<Long> sequences = new ArrayList<>();
+
+        tradeListener.getTrades()
+                .forEach(t -> sequences.add(t.getSequence()));
+
+        orderUpdateListener.getUpdates()
+                .forEach(u -> sequences.add(u.getSequence()));
+
+        for (int i = 1; i < sequences.size(); i++) {
+            assertTrue(sequences.get(i) > sequences.get(i - 1));
+        }
     }
 
     @Test
-    @DisplayName("Test processing multiple orders in sequence")
-    void testProcessMultipleOrders() throws InterruptedException {
-        // Given
-        matchingEngine.start();
+    void matchesAcrossPriceLevels() throws Exception {
 
-        Order buyOrder1 = getValidLimitBuyOrderWith(10L, 5L);
-        Order buyOrder2 = getValidLimitBuyOrderWith(9L, 5L);
-        Order sellOrder = getValidLimitSellOrderWith(10L, 8L);
+        Order sell1 = getValidLimitSellOrderWith(101L, 3L);
+        Order sell2 = getValidLimitSellOrderWith(100L, 3L);
+        Order buy = getValidLimitBuyOrderWith(101L, 5L);
 
-        OrderEvent event1 = OrderEvent.newOrder(buyOrder1);
-        OrderEvent event2 = OrderEvent.newOrder(buyOrder2);
-        OrderEvent event3 = OrderEvent.newOrder(sellOrder);
+        engine.submit(OrderEvent.newOrder(sell1));
+        engine.submit(OrderEvent.newOrder(sell2));
+        engine.submit(OrderEvent.newOrder(buy));
 
-        // When
-        matchingEngine.submit(event1);
-        matchingEngine.submit(event2);
-        matchingEngine.submit(event3);
+        assertEquals(2, tradeListener.getTrades().size());
 
-        // Then
-        Thread.sleep(200); // Give engine time to process all events
-        assertTrue(true); // All orders processed without exception
-    }
+        long totalQuantity = tradeListener.getTrades()
+                .stream()
+                .mapToLong(Trade::getQuantity)
+                .sum();
 
-    @Test
-    @DisplayName("Test processing order with matching across multiple price levels")
-    void testProcessOrderWithCrossPriceMatching() throws InterruptedException {
-        // Given
-        matchingEngine.start();
-
-        Order sellOrder1 = getValidLimitSellOrderWith(12L, 5L);
-        Order sellOrder2 = getValidLimitSellOrderWith(11L, 5L);
-        Order buyOrder = getValidLimitBuyOrderWith(12L, 8L);
-
-        // When
-        matchingEngine.submit(OrderEvent.newOrder(sellOrder1));
-        matchingEngine.submit(OrderEvent.newOrder(sellOrder2));
-        matchingEngine.submit(OrderEvent.newOrder(buyOrder));
-
-        // Then
-        Thread.sleep(200);
-        assertTrue(true); // Orders matched across price levels without exception
+        assertEquals(5L, totalQuantity);
     }
 
 }
