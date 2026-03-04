@@ -75,11 +75,11 @@ public class MatchingEngine implements EngineEventHandler {
         orderBook.cancelOrder(orderId);
     }
 
-    public boolean submit(OrderEvent event) {
+    public void submit(OrderEvent event) throws InterruptedException {
         if (!running) {
             throw new IllegalStateException("Engine is not running");
         }
-        return events.offer(event);
+        events.put(event);
     }
 
     public void stop() {
