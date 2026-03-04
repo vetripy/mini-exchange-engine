@@ -1,10 +1,11 @@
 package org.trading.exchange.event;
 
+import lombok.Builder;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-@RequiredArgsConstructor
 @Getter
+@Builder
 public class EngineEvent {
     private final long sequenceNumber;
     private final Type type;

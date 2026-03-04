@@ -1,5 +1,6 @@
 package org.trading.exchange.engine;
 
+import org.trading.exchange.event.EngineEvent;
 import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderEvent;
 import org.trading.exchange.listener.OrderUpdateListener;
@@ -13,28 +14,35 @@ import org.trading.exchange.orderbook.OrderBook;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 
 public class MatchingEngine implements EngineEventHandler {
 
-    private final BlockingQueue<OrderEvent> events;
+    private final BlockingQueue<OrderEvent> inboundEvents;
+    private final BlockingQueue<EngineEvent> outboundEvents;
     private final OrderBook orderBook;
     private final List<TradeListener> tradeListeners = new ArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new ArrayList<>();
     private volatile boolean running;
     private Thread engineThread;
+
     private long sequence = 0L;
 
 
     MatchingEngine() {
         this.orderBook = new OrderBook(this);
         this.running = false;
-        this.events = new LinkedBlockingQueue<>();
+        this.inboundEvents = new LinkedBlockingQueue<>();
+        this.outboundEvents = new ArrayBlockingQueue<>(10000);
+        Thread publisherThread = new Thread(this::publishLoop);
+        publisherThread.start();
         this.addTradeListener(new LoggingTradeListener());
         this.addOrderUpdateListener(new LoggingOrderUpdateListener());
     }
+
 
     public void start() {
         if (running) {
@@ -49,7 +57,7 @@ public class MatchingEngine implements EngineEventHandler {
     private void run() {
         while (running) {
             try {
-                OrderEvent event = events.take(); // blocks
+                OrderEvent event = inboundEvents.take(); // blocks
                 process(event);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -79,7 +87,7 @@ public class MatchingEngine implements EngineEventHandler {
         if (!running) {
             throw new IllegalStateException("Engine is not running");
         }
-        events.put(event);
+        inboundEvents.put(event);
     }
 
     public void stop() {
@@ -95,7 +103,7 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     @Override
-    public void onTrade(Trade event) {
+    public void onTrade(Trade event) throws InterruptedException {
         Trade trade = Trade.builder()
                 .sequence(nextSequence())
                 .tradeId(java.util.UUID.randomUUID().toString())
@@ -106,13 +114,15 @@ public class MatchingEngine implements EngineEventHandler {
                 .timestamp(System.currentTimeMillis())
                 .build();
 
-        for (TradeListener listener : tradeListeners) {
-            listener.onTrade(trade);
-        }
+        outboundEvents.put(EngineEvent.builder()
+                .sequenceNumber(trade.getSequence())
+                .type(EngineEvent.Type.TRADE)
+                .data(trade)
+                .build());
     }
 
     @Override
-    public void onOrderUpdate(OrderUpdate event) {
+    public void onOrderUpdate(OrderUpdate event) throws InterruptedException {
         OrderUpdate update = OrderUpdate.builder()
                 .sequence(nextSequence())
                 .orderId(event.getOrderId())
@@ -121,9 +131,11 @@ public class MatchingEngine implements EngineEventHandler {
                 .timestamp(System.nanoTime())
                 .build();
 
-        for (OrderUpdateListener listener : orderUpdateListeners) {
-            listener.onOrderUpdate(update);
-        }
+        outboundEvents.put(EngineEvent.builder()
+                .sequenceNumber(update.getSequence())
+                .type(EngineEvent.Type.ORDER_UPDATE)
+                .data(update)
+                .build());
     }
 
     public void addTradeListener(TradeListener listener) {
@@ -132,5 +144,23 @@ public class MatchingEngine implements EngineEventHandler {
 
     public void addOrderUpdateListener(OrderUpdateListener listener) {
         orderUpdateListeners.add(listener);
+    }
+
+    private void publishLoop() {
+        try {
+            while (true) {
+                EngineEvent event = outboundEvents.take(); // blocks
+                switch (event.getType()) {
+                    case TRADE -> tradeListeners.forEach(listener -> {
+                        listener.onTrade((Trade) event.getData());
+                    });
+                    case ORDER_UPDATE -> orderUpdateListeners.forEach(listener -> {
+                        listener.onOrderUpdate((OrderUpdate) event.getData());
+                    });
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
