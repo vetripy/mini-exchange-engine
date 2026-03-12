@@ -126,7 +126,7 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     @Override
-    public void onTrade(Trade event) throws InterruptedException {
+    public void onTrade(Trade event) {
         Trade trade = Trade.builder()
                 .sequence(nextSequence())
                 .tradeId(event.getTradeId())
@@ -144,14 +144,19 @@ public class MatchingEngine implements EngineEventHandler {
                 .build();
 
         if (mode == EngineMode.ASYNC) {
-            outboundEvents.put(engineEvent);
+            try {
+                outboundEvents.put(engineEvent);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                failEngine(e);
+            }
         } else {
             publishDirect(engineEvent);
         }
     }
 
     @Override
-    public void onOrderUpdate(OrderUpdate event) throws InterruptedException {
+    public void onOrderUpdate(OrderUpdate event) {
 
         OrderUpdate update = OrderUpdate.builder()
                 .sequence(nextSequence())
@@ -168,7 +173,12 @@ public class MatchingEngine implements EngineEventHandler {
                 .build();
 
         if (mode == EngineMode.ASYNC) {
-            outboundEvents.put(engineEvent);
+            try {
+                outboundEvents.put(engineEvent);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                failEngine(e);
+            }
         } else {
             publishDirect(engineEvent);
         }
@@ -194,6 +204,27 @@ public class MatchingEngine implements EngineEventHandler {
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            failEngine(e);
+        } catch (Exception e) {
+            failEngine(e);
+        }
+    }
+
+    private void failEngine(Throwable cause) {
+        synchronized (this) {
+            if (state == EngineState.FAILED) {
+                return;
+            }
+
+            transitionTo(EngineState.FAILED, cause);
+        }
+
+        if (engineThread != null) {
+            engineThread.interrupt();
+        }
+
+        if (publisherThread != null) {
+            publisherThread.interrupt();
         }
     }
 
