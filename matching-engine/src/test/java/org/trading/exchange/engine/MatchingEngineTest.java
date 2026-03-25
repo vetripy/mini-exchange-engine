@@ -7,7 +7,6 @@ import static org.trading.exchange.stub.OrderStub.getValidLimitSellOrderWith;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -68,18 +67,14 @@ class MatchingEngineTest {
     engine.submit(OrderEvent.newOrder(buy));
     engine.submit(OrderEvent.newOrder(sell));
 
-    Awaitility.await()
-        .untilAsserted(
-            () -> {
-              assertEquals(1, tradeListener.getTrades().size());
+    assertEquals(1, tradeListener.getTrades().size());
 
-              Trade trade = tradeListener.getTrades().getFirst();
+    Trade trade = tradeListener.getTrades().getFirst();
 
-              assertEquals(100L, trade.getTradePrice());
-              assertEquals(5L, trade.getQuantity());
-              assertEquals(buy.getOrderId(), trade.getBuyOrderId());
-              assertEquals(sell.getOrderId(), trade.getSellOrderId());
-            });
+    assertEquals(100L, trade.getTradePrice());
+    assertEquals(5L, trade.getQuantity());
+    assertEquals(buy.getOrderId(), trade.getBuyOrderId());
+    assertEquals(sell.getOrderId(), trade.getSellOrderId());
   }
 
   @Test
@@ -103,25 +98,19 @@ class MatchingEngineTest {
     engine.submit(OrderEvent.newOrder(buy));
     engine.submit(OrderEvent.newOrder(sell));
 
-    Awaitility.await()
-        .untilAsserted(
-            () -> {
-              assertEquals(1, tradeListener.getTrades().size());
+    assertEquals(1, tradeListener.getTrades().size());
 
-              Trade trade = tradeListener.getTrades().getFirst();
-              assertEquals(4L, trade.getQuantity());
+    Trade trade = tradeListener.getTrades().getFirst();
+    assertEquals(4L, trade.getQuantity());
 
-              OrderUpdate lastUpdate =
-                  orderUpdateListener.getUpdates().stream()
-                      .filter(
-                          orderUpdate -> Objects.equals(orderUpdate.getOrderId(), buy.getOrderId()))
-                      .toList()
-                      .getLast();
+    OrderUpdate lastUpdate =
+        orderUpdateListener.getUpdates().stream()
+            .filter(orderUpdate -> Objects.equals(orderUpdate.getOrderId(), buy.getOrderId()))
+            .toList()
+            .getLast();
 
-              System.out.println(orderUpdateListener.getUpdates());
-              assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
-              assertEquals(6L, lastUpdate.getRemainingQuantity());
-            });
+    assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
+    assertEquals(6L, lastUpdate.getRemainingQuantity());
   }
 
   @Test
@@ -132,14 +121,10 @@ class MatchingEngineTest {
     engine.submit(OrderEvent.newOrder(buy));
     engine.submit(OrderEvent.cancelOrder(buy.getOrderId()));
 
-    Awaitility.await()
-        .untilAsserted(
-            () -> {
-              System.out.println(orderUpdateListener.getUpdates());
-              OrderUpdate last = orderUpdateListener.latest();
+    System.out.println(orderUpdateListener.getUpdates());
+    OrderUpdate last = orderUpdateListener.latest();
 
-              assertEquals(OrderState.CANCELLED, last.getOrderState());
-            });
+    assertEquals(OrderState.CANCELLED, last.getOrderState());
   }
 
   @Test
@@ -153,17 +138,11 @@ class MatchingEngineTest {
 
     List<Long> sequences = new ArrayList<>();
 
-    tradeListener.getTrades().forEach(t -> sequences.add(t.getSequence()));
-
     orderUpdateListener.getUpdates().forEach(u -> sequences.add(u.getSequence()));
 
-    Awaitility.await()
-        .untilAsserted(
-            () -> {
-              for (int i = 1; i < sequences.size(); i++) {
-                assertTrue(sequences.get(i) > sequences.get(i - 1));
-              }
-            });
+    for (int i = 1; i < sequences.size(); i++) {
+      assertTrue(sequences.get(i) > sequences.get(i - 1));
+    }
   }
 
   @Test
@@ -177,15 +156,10 @@ class MatchingEngineTest {
     engine.submit(OrderEvent.newOrder(sell2));
     engine.submit(OrderEvent.newOrder(buy));
 
-    Awaitility.await()
-        .untilAsserted(
-            () -> {
-              assertEquals(2, tradeListener.getTrades().size());
+    assertEquals(2, tradeListener.getTrades().size());
 
-              long totalQuantity =
-                  tradeListener.getTrades().stream().mapToLong(Trade::getQuantity).sum();
+    long totalQuantity = tradeListener.getTrades().stream().mapToLong(Trade::getQuantity).sum();
 
-              assertEquals(5L, totalQuantity);
-            });
+    assertEquals(5L, totalQuantity);
   }
 }
