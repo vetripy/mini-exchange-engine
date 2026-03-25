@@ -56,10 +56,10 @@ public class MatchingEngine implements EngineEventHandler {
 
     transitionTo(EngineState.RUNNING, null);
 
-    engineThread = new Thread(this::engineLoop, "engine-thread");
-    engineThread.start();
-
     if (mode == EngineMode.ASYNC) {
+      engineThread = new Thread(this::engineLoop, "engine-thread");
+      engineThread.start();
+
       publisherThread = new Thread(this::publishLoop, "publisher-thread");
       publisherThread.start();
     }
@@ -98,7 +98,11 @@ public class MatchingEngine implements EngineEventHandler {
     if (this.state != EngineState.RUNNING) {
       throw new IllegalStateException("Engine is not running");
     }
-    inboundEvents.put(event);
+    if (EngineMode.SYNC.equals(this.mode)) {
+      process(event);
+    } else {
+      inboundEvents.put(event);
+    }
   }
 
   public synchronized void stop() throws InterruptedException {
@@ -107,8 +111,12 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     transitionTo(EngineState.STOPPING, null);
-    engineThread.interrupt();
-    engineThread.join();
+
+    if (engineThread != null) {
+      engineThread.interrupt();
+      engineThread.join();
+    }
+
     transitionTo(EngineState.STOPPED, null);
 
     if (publisherThread != null) {
