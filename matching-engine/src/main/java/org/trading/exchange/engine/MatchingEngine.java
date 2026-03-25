@@ -42,13 +42,6 @@ public class MatchingEngine implements EngineEventHandler {
     this.orderBook = new OrderBook(this);
   }
 
-  private synchronized void transitionTo(EngineState newState, Throwable cause) {
-    EngineState oldState = this.state;
-    this.state = newState;
-
-    stateListeners.forEach(listener -> listener.onStateChange(oldState, newState, cause));
-  }
-
   public synchronized void start() {
     if (this.state != EngineState.NEW && this.state != EngineState.STOPPED) {
       throw new IllegalStateException("Engine can't be started from state: " + this.state);
@@ -56,12 +49,32 @@ public class MatchingEngine implements EngineEventHandler {
 
     transitionTo(EngineState.RUNNING, null);
 
-    engineThread = new Thread(this::engineLoop, "engine-thread");
-    engineThread.start();
-
     if (mode == EngineMode.ASYNC) {
+      engineThread = new Thread(this::engineLoop, "engine-thread");
+      engineThread.start();
+
       publisherThread = new Thread(this::publishLoop, "publisher-thread");
       publisherThread.start();
+    }
+  }
+
+  public synchronized void stop() throws InterruptedException {
+    if (this.state != EngineState.RUNNING) {
+      throw new IllegalStateException("Engine not running");
+    }
+
+    transitionTo(EngineState.STOPPING, null);
+
+    if (engineThread != null) {
+      engineThread.interrupt();
+      engineThread.join();
+    }
+
+    transitionTo(EngineState.STOPPED, null);
+
+    if (publisherThread != null) {
+      publisherThread.interrupt();
+      publisherThread.join();
     }
   }
 
@@ -74,6 +87,28 @@ public class MatchingEngine implements EngineEventHandler {
         Thread.currentThread().interrupt();
         break;
       }
+    }
+  }
+
+  private void publishLoop() {
+    try {
+      while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
+        EngineEvent event = outboundEvents.take();
+        publishDirect(event);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      failEngine(e);
+    } catch (Exception e) {
+      failEngine(e);
+    }
+  }
+
+  private void publishDirect(EngineEvent event) {
+    switch (event.getType()) {
+      case TRADE -> tradeListeners.forEach(l -> l.onTrade((Trade) event.getData()));
+      case ORDER_UPDATE ->
+          orderUpdateListeners.forEach(l -> l.onOrderUpdate((OrderUpdate) event.getData()));
     }
   }
 
@@ -98,23 +133,36 @@ public class MatchingEngine implements EngineEventHandler {
     if (this.state != EngineState.RUNNING) {
       throw new IllegalStateException("Engine is not running");
     }
-    inboundEvents.put(event);
+    if (EngineMode.SYNC.equals(this.mode)) {
+      process(event);
+    } else {
+      inboundEvents.put(event);
+    }
   }
 
-  public synchronized void stop() throws InterruptedException {
-    if (this.state != EngineState.RUNNING) {
-      throw new IllegalStateException("Engine not running");
+  private void failEngine(Throwable cause) {
+    synchronized (this) {
+      if (state == EngineState.FAILED) {
+        return;
+      }
+
+      transitionTo(EngineState.FAILED, cause);
     }
 
-    transitionTo(EngineState.STOPPING, null);
-    engineThread.interrupt();
-    engineThread.join();
-    transitionTo(EngineState.STOPPED, null);
+    if (engineThread != null) {
+      engineThread.interrupt();
+    }
 
     if (publisherThread != null) {
       publisherThread.interrupt();
-      publisherThread.join();
     }
+  }
+
+  private synchronized void transitionTo(EngineState newState, Throwable cause) {
+    EngineState oldState = this.state;
+    this.state = newState;
+
+    stateListeners.forEach(listener -> listener.onStateChange(oldState, newState, cause));
   }
 
   private long nextSequence() {
@@ -155,7 +203,6 @@ public class MatchingEngine implements EngineEventHandler {
 
   @Override
   public void onOrderUpdate(OrderUpdate event) {
-
     OrderUpdate update =
         OrderUpdate.builder()
             .sequence(nextSequence())
@@ -194,45 +241,5 @@ public class MatchingEngine implements EngineEventHandler {
 
   public void addStateListener(EngineStateListener listener) {
     stateListeners.add(listener);
-  }
-
-  private void publishLoop() {
-    try {
-      while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
-        EngineEvent event = outboundEvents.take();
-        publishDirect(event);
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      failEngine(e);
-    } catch (Exception e) {
-      failEngine(e);
-    }
-  }
-
-  private void failEngine(Throwable cause) {
-    synchronized (this) {
-      if (state == EngineState.FAILED) {
-        return;
-      }
-
-      transitionTo(EngineState.FAILED, cause);
-    }
-
-    if (engineThread != null) {
-      engineThread.interrupt();
-    }
-
-    if (publisherThread != null) {
-      publisherThread.interrupt();
-    }
-  }
-
-  private void publishDirect(EngineEvent event) {
-    switch (event.getType()) {
-      case TRADE -> tradeListeners.forEach(l -> l.onTrade((Trade) event.getData()));
-      case ORDER_UPDATE ->
-          orderUpdateListeners.forEach(l -> l.onOrderUpdate((OrderUpdate) event.getData()));
-    }
   }
 }
