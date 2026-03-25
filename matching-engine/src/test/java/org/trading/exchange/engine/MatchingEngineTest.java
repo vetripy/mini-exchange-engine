@@ -17,6 +17,7 @@ import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderState;
 import org.trading.exchange.model.Trade;
+import org.trading.exchange.utils.TestEngineStateListener;
 import org.trading.exchange.utils.TestOrderUpdateListener;
 import org.trading.exchange.utils.TestTradeListener;
 
@@ -31,9 +32,11 @@ class MatchingEngineTest {
     engine = new MatchingEngine(EngineMode.SYNC);
     tradeListener = new TestTradeListener();
     orderUpdateListener = new TestOrderUpdateListener();
+    TestEngineStateListener testEngineStateListener = new TestEngineStateListener();
 
     engine.addTradeListener(tradeListener);
     engine.addOrderUpdateListener(orderUpdateListener);
+    engine.addStateListener(testEngineStateListener);
     engine.start();
   }
 
