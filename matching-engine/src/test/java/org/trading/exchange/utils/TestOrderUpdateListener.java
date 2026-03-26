@@ -7,18 +7,18 @@ import org.trading.exchange.listener.OrderUpdateListener;
 
 public class TestOrderUpdateListener implements OrderUpdateListener {
 
-  private final List<OrderUpdate> updates = new ArrayList<>();
+    private final List<OrderUpdate> updates = new ArrayList<>();
 
-  @Override
-  public void onOrderUpdate(OrderUpdate update) {
-    updates.add(update);
-  }
+    @Override
+    public void onOrderUpdate(OrderUpdate update) {
+        updates.add(update);
+    }
 
-  public List<OrderUpdate> getUpdates() {
-    return updates;
-  }
+    public List<OrderUpdate> getUpdates() {
+        return updates;
+    }
 
-  public OrderUpdate latest() {
-    return updates.getLast();
-  }
+    public OrderUpdate latest() {
+        return updates.getLast();
+    }
 }

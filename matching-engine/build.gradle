@@ -22,7 +22,7 @@ dependencies {
 
 spotless {
     java {
-        eclipse().configFile('config/code-style.xml')
+        eclipse().configFile('config/eclipse-java-google-style.xml')
         target 'src/**/*.java'
     }
 }

@@ -5,14 +5,9 @@ import org.trading.exchange.listener.OrderUpdateListener;
 
 public class LoggingOrderUpdateListener implements OrderUpdateListener {
 
-  @Override
-  public void onOrderUpdate(OrderUpdate update) {
-    System.out.println(
-        "ORDER UPDATE → "
-            + update.getOrderId()
-            + " "
-            + update.getOrderState()
-            + " remaining: "
-            + update.getRemainingQuantity());
-  }
+    @Override
+    public void onOrderUpdate(OrderUpdate update) {
+        System.out.println("ORDER UPDATE → " + update.getOrderId() + " " + update.getOrderState()
+                + " remaining: " + update.getRemainingQuantity());
+    }
 }
