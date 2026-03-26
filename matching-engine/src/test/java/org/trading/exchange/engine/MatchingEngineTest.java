@@ -13,10 +13,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.trading.exchange.event.OrderEvent;
 import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderState;
-import org.trading.exchange.model.Trade;
 import org.trading.exchange.utils.TestEngineStateListener;
 import org.trading.exchange.utils.TestOrderUpdateListener;
 import org.trading.exchange.utils.TestTradeListener;
@@ -72,12 +72,12 @@ class MatchingEngineTest {
 
     assertEquals(1, tradeListener.getTrades().size());
 
-    Trade trade = tradeListener.getTrades().getFirst();
+    TradeEvent tradeEvent = tradeListener.getTrades().getFirst();
 
-    assertEquals(100L, trade.getTradePrice());
-    assertEquals(5L, trade.getQuantity());
-    assertEquals(buy.getOrderId(), trade.getBuyOrderId());
-    assertEquals(sell.getOrderId(), trade.getSellOrderId());
+    assertEquals(100L, tradeEvent.getTradePrice());
+    assertEquals(5L, tradeEvent.getQuantity());
+    assertEquals(buy.getOrderId(), tradeEvent.getBuyOrderId());
+    assertEquals(sell.getOrderId(), tradeEvent.getSellOrderId());
   }
 
   @Test
@@ -103,8 +103,8 @@ class MatchingEngineTest {
 
     assertEquals(1, tradeListener.getTrades().size());
 
-    Trade trade = tradeListener.getTrades().getFirst();
-    assertEquals(4L, trade.getQuantity());
+    TradeEvent tradeEvent = tradeListener.getTrades().getFirst();
+    assertEquals(4L, tradeEvent.getQuantity());
 
     OrderUpdate lastUpdate =
         orderUpdateListener.getUpdates().stream()
@@ -161,7 +161,8 @@ class MatchingEngineTest {
 
     assertEquals(2, tradeListener.getTrades().size());
 
-    long totalQuantity = tradeListener.getTrades().stream().mapToLong(Trade::getQuantity).sum();
+    long totalQuantity =
+        tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
 
     assertEquals(5L, totalQuantity);
   }

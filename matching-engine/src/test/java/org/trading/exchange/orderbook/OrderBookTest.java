@@ -11,8 +11,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.Order;
-import org.trading.exchange.model.Trade;
 
 public class OrderBookTest {
 
@@ -24,7 +24,7 @@ public class OrderBookTest {
         new OrderBook(
             new EngineEventHandler() {
               @Override
-              public void onTrade(Trade event) {}
+              public void onTrade(TradeEvent event) {}
 
               @Override
               public void onOrderUpdate(OrderUpdate event) {}

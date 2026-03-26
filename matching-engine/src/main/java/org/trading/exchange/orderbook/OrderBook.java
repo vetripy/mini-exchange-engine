@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.*;
 import org.trading.exchange.util.OrderBookUtil;
 
@@ -261,8 +262,8 @@ public class OrderBook {
   }
 
   private void emitTrade(Order buyOrder, Order sellOrder, Long price, Long quantity) {
-    Trade trade =
-        Trade.builder()
+    TradeEvent tradeEvent =
+        TradeEvent.builder()
             .buyOrderId(buyOrder.getOrderId())
             .sellOrderId(sellOrder.getOrderId())
             .tradePrice(price)
@@ -270,7 +271,7 @@ public class OrderBook {
             .timestamp(System.currentTimeMillis())
             .build();
 
-    engineEventHandler.onTrade(trade);
+    engineEventHandler.onTrade(tradeEvent);
   }
 
   public void displayBook() {

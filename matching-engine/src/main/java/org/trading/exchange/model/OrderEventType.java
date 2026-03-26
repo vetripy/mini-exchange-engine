@@ -1,4 +1,4 @@
-package org.trading.exchange.event;
+package org.trading.exchange.model;
 
 public enum OrderEventType {
   NEW_ORDER,

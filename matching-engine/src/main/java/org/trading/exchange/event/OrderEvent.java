@@ -3,6 +3,7 @@ package org.trading.exchange.event;
 import lombok.Getter;
 import lombok.ToString;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.model.OrderEventType;
 
 @Getter
 @ToString

@@ -9,12 +9,12 @@ import org.trading.exchange.event.EngineEvent;
 import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderEvent;
 import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
 import org.trading.exchange.model.Order;
-import org.trading.exchange.model.Trade;
 import org.trading.exchange.orderbook.OrderBook;
 
 public class MatchingEngine implements EngineEventHandler {
@@ -106,7 +106,7 @@ public class MatchingEngine implements EngineEventHandler {
 
   private void publishDirect(EngineEvent event) {
     switch (event.getType()) {
-      case TRADE -> tradeListeners.forEach(l -> l.onTrade((Trade) event.getData()));
+      case TRADE -> tradeListeners.forEach(l -> l.onTrade((TradeEvent) event.getData()));
       case ORDER_UPDATE ->
           orderUpdateListeners.forEach(l -> l.onOrderUpdate((OrderUpdate) event.getData()));
     }
@@ -170,9 +170,9 @@ public class MatchingEngine implements EngineEventHandler {
   }
 
   @Override
-  public void onTrade(Trade event) {
-    Trade trade =
-        Trade.builder()
+  public void onTrade(TradeEvent event) {
+    TradeEvent tradeEvent =
+        TradeEvent.builder()
             .sequence(nextSequence())
             .tradeId(event.getTradeId())
             .buyOrderId(event.getBuyOrderId())
@@ -184,9 +184,9 @@ public class MatchingEngine implements EngineEventHandler {
 
     EngineEvent engineEvent =
         EngineEvent.builder()
-            .sequenceNumber(trade.getSequence())
+            .sequenceNumber(tradeEvent.getSequence())
             .type(EngineEvent.Type.TRADE)
-            .data(trade)
+            .data(tradeEvent)
             .build();
 
     if (mode == EngineMode.ASYNC) {

@@ -1,11 +1,11 @@
-package org.trading.exchange.model;
+package org.trading.exchange.event;
 
 import lombok.Builder;
 import lombok.Getter;
 
 @Getter
 @Builder
-public class Trade {
+public class TradeEvent {
 
   private final long sequence;
   private final String tradeId;
