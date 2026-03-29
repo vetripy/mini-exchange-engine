@@ -8,6 +8,7 @@ import org.trading.exchange.model.OrderEventType;
 @Getter
 @ToString
 public class OrderEvent {
+
     private final OrderEventType type;
     private final String orderId;
     private final Order order;
