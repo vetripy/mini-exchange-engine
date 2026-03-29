@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
-import org.trading.exchange.event.OrderEvent;
 import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.EngineMode;

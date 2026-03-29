@@ -119,13 +119,9 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     private void process(Envelope<EngineCommand> event) {
-        EngineCommand command = EnvelopeUtil.unwrap(event);
-        long seq = event.sequence();
-        switch (command) {
-            case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
-            case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
-            default -> throw new IllegalStateException("Unsupported engine command: " + command);
-        }
+        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
+
+        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
     }
 
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
@@ -184,7 +180,7 @@ public class MatchingEngine implements EngineEventHandler {
     @Override
     public void onTrade(TradeEvent event) {
         EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
-            .type(Type.TRADE).data(event).build();
+                .type(Type.TRADE).data(event).build();
 
         if (mode == EngineMode.ASYNC) {
             try {
@@ -201,7 +197,7 @@ public class MatchingEngine implements EngineEventHandler {
     @Override
     public void onOrderUpdate(OrderUpdateEvent event) {
         EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
-            .type(Type.ORDER_UPDATE).data(event).build();
+                .type(Type.ORDER_UPDATE).data(event).build();
 
         if (mode == EngineMode.ASYNC) {
             try {
