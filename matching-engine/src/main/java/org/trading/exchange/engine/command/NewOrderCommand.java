@@ -11,9 +11,7 @@ public class NewOrderCommand implements EngineCommand {
     private final Order order;
 
     public static NewOrderCommand of(Order order) {
-        return NewOrderCommand.builder()
-            .order(order)
-            .build();
+        return NewOrderCommand.builder().order(order).build();
     }
 
 }

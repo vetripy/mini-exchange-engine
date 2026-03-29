@@ -110,8 +110,8 @@ class MatchingEngineTest {
         assertEquals(4L, tradeEvent.getQuantity());
 
         OrderUpdateEvent lastUpdate = orderUpdateListener.getUpdates().stream()
-            .filter(orderUpdate -> Objects.equals(orderUpdate.getOrderId(), buy.getOrderId()))
-            .toList().getLast();
+                .filter(orderUpdate -> Objects.equals(orderUpdate.getOrderId(), buy.getOrderId()))
+                .toList().getLast();
 
         assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
         assertEquals(6L, lastUpdate.getRemainingQuantity());
@@ -163,7 +163,7 @@ class MatchingEngineTest {
         assertEquals(2, tradeListener.getTrades().size());
 
         long totalQuantity =
-            tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
+                tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
 
         assertEquals(5L, totalQuantity);
     }

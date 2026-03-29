@@ -10,9 +10,7 @@ public class CancelOrderCommand implements EngineCommand {
     private final String orderId;
 
     public static CancelOrderCommand of(String orderId) {
-        return CancelOrderCommand.builder()
-            .orderId(orderId)
-            .build();
+        return CancelOrderCommand.builder().orderId(orderId).build();
     }
 
 

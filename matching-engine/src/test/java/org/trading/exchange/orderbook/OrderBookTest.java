@@ -23,12 +23,10 @@ public class OrderBookTest {
     void setUp() {
         orderBook = new OrderBook(new EngineEventHandler() {
             @Override
-            public void onTrade(TradeEvent event) {
-            }
+            public void onTrade(TradeEvent event) {}
 
             @Override
-            public void onOrderUpdate(OrderUpdateEvent event) {
-            }
+            public void onOrderUpdate(OrderUpdateEvent event) {}
         });
     }
 

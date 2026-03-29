@@ -55,8 +55,8 @@ public class OrderBook {
 
     private void handleFOK(Order order) {
         boolean canFill = order.getSide() == OrderSide.BUY
-            ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
-            : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
+                ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
+                : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
@@ -93,7 +93,7 @@ public class OrderBook {
         }
 
         TreeMap<Long, Deque<Order>> book =
-            order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
+                order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         Deque<Order> queue = book.get(order.getPrice());
 
         if (queue != null) {
@@ -184,7 +184,7 @@ public class OrderBook {
         }
         if (order.getRemainingQuantity() > 0) {
             System.out.println("Market buy order partially filled, remaining quantity: "
-                + order.getRemainingQuantity());
+                    + order.getRemainingQuantity());
             System.out.println("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
         }
@@ -205,7 +205,7 @@ public class OrderBook {
         }
         if (order.getRemainingQuantity() > 0) {
             System.out.println("Market sell order partially filled, remaining quantity: "
-                + order.getRemainingQuantity());
+                    + order.getRemainingQuantity());
             System.out.println("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
         }
@@ -218,7 +218,7 @@ public class OrderBook {
 
     private void executeTrade(Order buyOrder, Order sellOrder) {
         long tradeQuantity =
-            Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
+                Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
         Long tradePrice = sellOrder.getPrice() == null ? buyOrder.getPrice() : sellOrder.getPrice();
@@ -260,21 +260,18 @@ public class OrderBook {
     }
 
     private void emitOrderUpdate(Order order) {
-        OrderUpdateEvent update = OrderUpdateEvent.builder()
-            .sequence(this.currentSequence)
-            .orderId(order.getOrderId())
-            .orderState(order.getState()).remainingQuantity(order.getRemainingQuantity())
-            .timestamp(System.nanoTime()).build();
+        OrderUpdateEvent update = OrderUpdateEvent.builder().sequence(this.currentSequence)
+                .orderId(order.getOrderId()).orderState(order.getState())
+                .remainingQuantity(order.getRemainingQuantity()).timestamp(System.nanoTime())
+                .build();
 
         engineEventHandler.onOrderUpdate(update);
     }
 
     private void emitTrade(Order buyOrder, Order sellOrder, Long price, Long quantity) {
-        TradeEvent tradeEvent = TradeEvent.builder()
-            .sequence(this.currentSequence)
-            .buyOrderId(buyOrder.getOrderId())
-            .sellOrderId(sellOrder.getOrderId()).tradePrice(price).quantity(quantity)
-            .timestamp(System.currentTimeMillis()).build();
+        TradeEvent tradeEvent = TradeEvent.builder().sequence(this.currentSequence)
+                .buyOrderId(buyOrder.getOrderId()).sellOrderId(sellOrder.getOrderId())
+                .tradePrice(price).quantity(quantity).timestamp(System.currentTimeMillis()).build();
 
         engineEventHandler.onTrade(tradeEvent);
     }
