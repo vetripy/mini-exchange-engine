@@ -5,241 +5,221 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
+import org.trading.exchange.engine.command.CancelOrderCommand;
+import org.trading.exchange.engine.command.EngineCommand;
+import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.event.EngineEvent;
+import org.trading.exchange.event.EngineEvent.Type;
 import org.trading.exchange.event.EngineEventHandler;
-import org.trading.exchange.event.OrderEvent;
-import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
+import org.trading.exchange.model.Envelope;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.orderbook.OrderBook;
+import org.trading.exchange.sequencer.Sequencer;
+import org.trading.exchange.util.EnvelopeUtil;
 
 public class MatchingEngine implements EngineEventHandler {
 
-  private final BlockingQueue<OrderEvent> inboundEvents;
-  private final BlockingQueue<EngineEvent> outboundEvents;
-  private final OrderBook orderBook;
+    private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
+    private final BlockingQueue<EngineEvent> outboundEvents;
+    private final OrderBook orderBook;
+    private final Sequencer sequencer;
 
-  private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
-  private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
-  private final List<EngineStateListener> stateListeners = new CopyOnWriteArrayList<>();
+    private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
+    private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
+    private final List<EngineStateListener> stateListeners = new CopyOnWriteArrayList<>();
 
-  private final EngineMode mode;
-  private volatile EngineState state;
-  private Thread engineThread;
-  private Thread publisherThread;
+    private final EngineMode mode;
+    private volatile EngineState state;
+    private Thread engineThread;
+    private Thread publisherThread;
 
-  private long sequence = 0L;
-
-  public MatchingEngine(EngineMode mode) {
-    this.mode = mode;
-    this.state = EngineState.NEW;
-    this.inboundEvents = new LinkedBlockingQueue<>();
-    this.outboundEvents = new ArrayBlockingQueue<>(10_000);
-    this.orderBook = new OrderBook(this);
-  }
-
-  public synchronized void start() {
-    if (this.state != EngineState.NEW && this.state != EngineState.STOPPED) {
-      throw new IllegalStateException("Engine can't be started from state: " + this.state);
+    public MatchingEngine(EngineMode mode) {
+        this.mode = mode;
+        this.state = EngineState.NEW;
+        this.inboundEvents = new LinkedBlockingQueue<>();
+        this.sequencer = new Sequencer();
+        this.outboundEvents = new ArrayBlockingQueue<>(10_000);
+        this.orderBook = new OrderBook(this);
     }
 
-    transitionTo(EngineState.RUNNING, null);
+    public synchronized void start() {
+        if (this.state != EngineState.NEW && this.state != EngineState.STOPPED) {
+            throw new IllegalStateException("Engine can't be started from state: " + this.state);
+        }
 
-    if (mode == EngineMode.ASYNC) {
-      engineThread = new Thread(this::engineLoop, "engine-thread");
-      engineThread.start();
+        transitionTo(EngineState.RUNNING, null);
 
-      publisherThread = new Thread(this::publishLoop, "publisher-thread");
-      publisherThread.start();
-    }
-  }
+        if (mode == EngineMode.ASYNC) {
+            engineThread = new Thread(this::engineLoop, "engine-thread");
+            engineThread.start();
 
-  public synchronized void stop() throws InterruptedException {
-    if (this.state != EngineState.RUNNING) {
-      throw new IllegalStateException("Engine not running");
-    }
-
-    transitionTo(EngineState.STOPPING, null);
-
-    if (engineThread != null) {
-      engineThread.interrupt();
-      engineThread.join();
+            publisherThread = new Thread(this::publishLoop, "publisher-thread");
+            publisherThread.start();
+        }
     }
 
-    transitionTo(EngineState.STOPPED, null);
+    public synchronized void stop() throws InterruptedException {
+        if (this.state != EngineState.RUNNING) {
+            throw new IllegalStateException("Engine not running");
+        }
 
-    if (publisherThread != null) {
-      publisherThread.interrupt();
-      publisherThread.join();
-    }
-  }
+        transitionTo(EngineState.STOPPING, null);
 
-  private void engineLoop() {
-    while (this.state == EngineState.RUNNING) {
-      try {
-        OrderEvent event = inboundEvents.take();
-        process(event);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        break;
-      }
-    }
-  }
+        if (engineThread != null) {
+            engineThread.interrupt();
+            engineThread.join();
+        }
 
-  private void publishLoop() {
-    try {
-      while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
-        EngineEvent event = outboundEvents.take();
-        publishDirect(event);
-      }
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      failEngine(e);
-    } catch (Exception e) {
-      failEngine(e);
-    }
-  }
+        transitionTo(EngineState.STOPPED, null);
 
-  private void publishDirect(EngineEvent event) {
-    switch (event.getType()) {
-      case TRADE -> tradeListeners.forEach(l -> l.onTrade((TradeEvent) event.getData()));
-      case ORDER_UPDATE ->
-          orderUpdateListeners.forEach(l -> l.onOrderUpdate((OrderUpdate) event.getData()));
-    }
-  }
-
-  private void process(OrderEvent event) {
-    switch (event.getType()) {
-      case NEW_ORDER -> handleNewOrder(event.getOrder());
-      case CANCEL_ORDER -> handleCancelOrder(event.getOrderId());
-    }
-  }
-
-  private void handleNewOrder(Order order) {
-    System.out.println("Processing new order: " + order);
-    orderBook.addOrder(order);
-  }
-
-  private void handleCancelOrder(String orderId) {
-    System.out.println("Processing cancel order: " + orderId);
-    orderBook.cancelOrder(orderId);
-  }
-
-  public void submit(OrderEvent event) throws InterruptedException {
-    if (this.state != EngineState.RUNNING) {
-      throw new IllegalStateException("Engine is not running");
-    }
-    if (EngineMode.SYNC.equals(this.mode)) {
-      process(event);
-    } else {
-      inboundEvents.put(event);
-    }
-  }
-
-  private void failEngine(Throwable cause) {
-    synchronized (this) {
-      if (state == EngineState.FAILED) {
-        return;
-      }
-
-      transitionTo(EngineState.FAILED, cause);
+        if (publisherThread != null) {
+            publisherThread.interrupt();
+            publisherThread.join();
+        }
     }
 
-    if (engineThread != null) {
-      engineThread.interrupt();
+    private void engineLoop() {
+        while (this.state == EngineState.RUNNING) {
+            try {
+                Envelope<EngineCommand> event = inboundEvents.take();
+                process(event);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
     }
 
-    if (publisherThread != null) {
-      publisherThread.interrupt();
+    private void publishLoop() {
+        try {
+            while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
+                EngineEvent event = outboundEvents.take();
+                publishDirect(event);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            failEngine(e);
+        } catch (Exception e) {
+            failEngine(e);
+        }
     }
-  }
 
-  private synchronized void transitionTo(EngineState newState, Throwable cause) {
-    EngineState oldState = this.state;
-    this.state = newState;
-
-    stateListeners.forEach(listener -> listener.onStateChange(oldState, newState, cause));
-  }
-
-  private long nextSequence() {
-    return ++sequence;
-  }
-
-  @Override
-  public void onTrade(TradeEvent event) {
-    TradeEvent tradeEvent =
-        TradeEvent.builder()
-            .sequence(nextSequence())
-            .tradeId(event.getTradeId())
-            .buyOrderId(event.getBuyOrderId())
-            .sellOrderId(event.getSellOrderId())
-            .tradePrice(event.getTradePrice())
-            .quantity(event.getQuantity())
-            .timestamp(System.currentTimeMillis())
-            .build();
-
-    EngineEvent engineEvent =
-        EngineEvent.builder()
-            .sequenceNumber(tradeEvent.getSequence())
-            .type(EngineEvent.Type.TRADE)
-            .data(tradeEvent)
-            .build();
-
-    if (mode == EngineMode.ASYNC) {
-      try {
-        outboundEvents.put(engineEvent);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        failEngine(e);
-      }
-    } else {
-      publishDirect(engineEvent);
+    private void publishDirect(EngineEvent event) {
+        switch (event.getType()) {
+            case TRADE -> tradeListeners.forEach(l -> l.onTrade((TradeEvent) event.getData()));
+            case ORDER_UPDATE -> orderUpdateListeners.forEach(
+                l -> l.onOrderUpdate((OrderUpdateEvent) event.getData()));
+        }
     }
-  }
 
-  @Override
-  public void onOrderUpdate(OrderUpdate event) {
-    OrderUpdate update =
-        OrderUpdate.builder()
-            .sequence(nextSequence())
-            .orderId(event.getOrderId())
-            .orderState(event.getOrderState())
-            .remainingQuantity(event.getRemainingQuantity())
-            .timestamp(System.nanoTime())
-            .build();
+    private void process(Envelope<EngineCommand> event) {
+        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
 
-    EngineEvent engineEvent =
-        EngineEvent.builder()
-            .sequenceNumber(update.getSequence())
-            .type(EngineEvent.Type.ORDER_UPDATE)
-            .data(update)
-            .build();
-
-    if (mode == EngineMode.ASYNC) {
-      try {
-        outboundEvents.put(engineEvent);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        failEngine(e);
-      }
-    } else {
-      publishDirect(engineEvent);
+        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
     }
-  }
 
-  public void addTradeListener(TradeListener listener) {
-    tradeListeners.add(listener);
-  }
+    private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
+        Order order = newOrderCommand.getOrder();
+        System.out.println("Processing new order: " + order + " with sequence: " + seq);
+        orderBook.addOrder(order, seq);
+    }
 
-  public void addOrderUpdateListener(OrderUpdateListener listener) {
-    orderUpdateListeners.add(listener);
-  }
+    private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
+        String orderId = cancelOrderCommand.getOrderId();
+        System.out.println("Processing cancel order: " + orderId + " with sequence: " + seq);
+        orderBook.cancelOrder(orderId, seq);
+    }
 
-  public void addStateListener(EngineStateListener listener) {
-    stateListeners.add(listener);
-  }
+
+    public void submit(EngineCommand command) throws InterruptedException {
+        if (this.state != EngineState.RUNNING) {
+            throw new IllegalStateException("Engine is not running");
+        }
+
+        long seq = sequencer.getNextSequence();
+        Envelope<EngineCommand> envelope = EnvelopeUtil.wrap(seq, command);
+
+        if (EngineMode.SYNC.equals(this.mode)) {
+            process(envelope);
+        } else {
+            inboundEvents.put(envelope);
+        }
+    }
+
+    private void failEngine(Throwable cause) {
+        synchronized (this) {
+            if (state == EngineState.FAILED) {
+                return;
+            }
+
+            transitionTo(EngineState.FAILED, cause);
+        }
+
+        if (engineThread != null) {
+            engineThread.interrupt();
+        }
+
+        if (publisherThread != null) {
+            publisherThread.interrupt();
+        }
+    }
+
+    private synchronized void transitionTo(EngineState newState, Throwable cause) {
+        EngineState oldState = this.state;
+        this.state = newState;
+
+        stateListeners.forEach(listener -> listener.onStateChange(oldState, newState, cause));
+    }
+
+    @Override
+    public void onTrade(TradeEvent event) {
+        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
+                .type(Type.TRADE).data(event).build();
+
+        if (mode == EngineMode.ASYNC) {
+            try {
+                outboundEvents.put(engineEvent);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                failEngine(e);
+            }
+        } else {
+            publishDirect(engineEvent);
+        }
+    }
+
+    @Override
+    public void onOrderUpdate(OrderUpdateEvent event) {
+        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
+                .type(Type.ORDER_UPDATE).data(event).build();
+
+        if (mode == EngineMode.ASYNC) {
+            try {
+                outboundEvents.put(engineEvent);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                failEngine(e);
+            }
+        } else {
+            publishDirect(engineEvent);
+        }
+    }
+
+    public void addTradeListener(TradeListener listener) {
+        tradeListeners.add(listener);
+    }
+
+    public void addOrderUpdateListener(OrderUpdateListener listener) {
+        orderUpdateListeners.add(listener);
+    }
+
+    public void addStateListener(EngineStateListener listener) {
+        stateListeners.add(listener);
+    }
 }

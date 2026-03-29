@@ -6,12 +6,11 @@ import lombok.Getter;
 @Getter
 @Builder
 public class EngineEvent {
-  private final long sequenceNumber;
-  private final Type type;
-  private final Object data;
+    private final long sequenceNumber;
+    private final Type type;
+    private final Object data;
 
-  public enum Type {
-    TRADE,
-    ORDER_UPDATE
-  }
+    public enum Type {
+        TRADE, ORDER_UPDATE
+    }
 }

@@ -1,7 +1,8 @@
 package org.trading.exchange.listener;
 
-import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.OrderUpdateEvent;
 
 public interface OrderUpdateListener {
-  void onOrderUpdate(OrderUpdate orderUpdate);
+
+    void onOrderUpdate(OrderUpdateEvent orderUpdateEvent);
 }
