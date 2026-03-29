@@ -10,22 +10,25 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.trading.exchange.event.EngineEventHandler;
-import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.Order;
 
 public class OrderBookTest {
 
     OrderBook orderBook;
+    long sequence = 0L;
 
     @BeforeEach
     void setUp() {
         orderBook = new OrderBook(new EngineEventHandler() {
             @Override
-            public void onTrade(TradeEvent event) {}
+            public void onTrade(TradeEvent event) {
+            }
 
             @Override
-            public void onOrderUpdate(OrderUpdate event) {}
+            public void onOrderUpdate(OrderUpdateEvent event) {
+            }
         });
     }
 
@@ -33,8 +36,8 @@ public class OrderBookTest {
     @DisplayName("Test adding orders to the order book")
     void testAddOrder() {
         // Given
-        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 10L));
-        orderBook.addOrder(getValidLimitSellOrderWith(15L, 1L));
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 10L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(15L, 1L), ++sequence);
 
         // Then
         assertEquals(1, orderBook.getBuySnapshot().size());
@@ -45,8 +48,8 @@ public class OrderBookTest {
     @DisplayName("Test matching orders when prices match in the order book")
     void testMatchOrders() {
         // Given
-        orderBook.addOrder(getValidLimitBuyOrderWith(8L, 1L));
-        orderBook.addOrder(getValidLimitSellOrderWith(8L, 1L));
+        orderBook.addOrder(getValidLimitBuyOrderWith(8L, 1L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(8L, 1L), ++sequence);
 
         // Then
         assertEquals(0, orderBook.getBuySnapshot().size());
@@ -57,10 +60,10 @@ public class OrderBookTest {
     @DisplayName("Test matching orders when multiple orders are added to the order book")
     void testMatchMultipleOrders() {
         // Given
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 1L));
-        orderBook.addOrder(getValidLimitSellOrderWith(9L, 1L));
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L));
-        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 3L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 1L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(9L, 1L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L), ++sequence);
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 3L), ++sequence);
 
         orderBook.displayBook();
 
@@ -73,8 +76,8 @@ public class OrderBookTest {
     @DisplayName("Test matching orders when buy price is more than sell price in the order book")
     void testMatchWithBuyMoreThanSellPrice() {
         // Given
-        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 1L));
-        orderBook.addOrder(getValidLimitSellOrderWith(8L, 1L));
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 1L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(8L, 1L), ++sequence);
 
         // Then
         assertEquals(0, orderBook.getBuySnapshot().size());
@@ -85,8 +88,8 @@ public class OrderBookTest {
     @DisplayName("Test partial matching of orders in the order book")
     void testPartialMatch() {
         // Given
-        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 10L));
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L));
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 10L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L), ++sequence);
 
         // Then
         assertEquals(1L, orderBook.getBuySnapshot().size());
@@ -99,8 +102,8 @@ public class OrderBookTest {
     void testCancelOrder() {
         // Given
         Order buyOrder = getValidLimitBuyOrderWith(10L, 10L);
-        orderBook.addOrder(buyOrder);
-        orderBook.cancelOrder(buyOrder.getOrderId());
+        orderBook.addOrder(buyOrder, ++sequence);
+        orderBook.cancelOrder(buyOrder.getOrderId(), ++sequence);
 
         // Then
         assertEquals(0, orderBook.getBuySnapshot().size());
@@ -111,9 +114,9 @@ public class OrderBookTest {
     void testCancelPartiallyFilledOrder() {
         // Given
         Order buyOrder = getValidLimitBuyOrderWith(10L, 10L);
-        orderBook.addOrder(buyOrder);
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L));
-        orderBook.cancelOrder(buyOrder.getOrderId());
+        orderBook.addOrder(buyOrder, ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L), ++sequence);
+        orderBook.cancelOrder(buyOrder.getOrderId(), ++sequence);
 
         // Then
         assertEquals(0, orderBook.getBuySnapshot().size());
@@ -124,12 +127,12 @@ public class OrderBookTest {
     void testCancelFullyFilledOrder() {
         // Given
         Order buyOrder = getValidLimitBuyOrderWith(10L, 10L);
-        orderBook.addOrder(buyOrder);
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 10L));
+        orderBook.addOrder(buyOrder, ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 10L), ++sequence);
 
         // Then
         try {
-            orderBook.cancelOrder(buyOrder.getOrderId());
+            orderBook.cancelOrder(buyOrder.getOrderId(), ++sequence);
         } catch (IllegalArgumentException e) {
             assertEquals("Order not found: " + buyOrder.getOrderId(), e.getMessage());
         }
@@ -143,7 +146,7 @@ public class OrderBookTest {
 
         // Then
         try {
-            orderBook.cancelOrder(nonExistentOrderId);
+            orderBook.cancelOrder(nonExistentOrderId, ++sequence);
         } catch (IllegalArgumentException e) {
             assertEquals("Order not found: " + nonExistentOrderId, e.getMessage());
         }
@@ -153,11 +156,11 @@ public class OrderBookTest {
     @DisplayName("Test market orders in the order book")
     void testMarketOrders() {
         // build a book using limit orders
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L));
-        orderBook.addOrder(getValidLimitSellOrderWith(11L, 5L));
-        orderBook.addOrder(getValidLimitSellOrderWith(12L, 5L));
-        orderBook.addOrder(getValidLimitBuyOrderWith(9L, 5L));
-        orderBook.addOrder(getValidLimitBuyOrderWith(8L, 5L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(11L, 5L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(12L, 5L), ++sequence);
+        orderBook.addOrder(getValidLimitBuyOrderWith(9L, 5L), ++sequence);
+        orderBook.addOrder(getValidLimitBuyOrderWith(8L, 5L), ++sequence);
 
         // check book depth
         assertEquals(2, orderBook.getBuySnapshot().size());
@@ -165,12 +168,12 @@ public class OrderBookTest {
 
         // add a market buy order and check if the order is filled
         Order marketBuyOrder = getValidMarketBuyOrderWith(2L);
-        orderBook.addOrder(marketBuyOrder);
+        orderBook.addOrder(marketBuyOrder, ++sequence);
         assertEquals(FILLED, marketBuyOrder.getState());
 
         // add a market sell order and check if the order is filled
         Order marketSellOrder = getValidMarketSellOrderWith(2L);
-        orderBook.addOrder(marketSellOrder);
+        orderBook.addOrder(marketSellOrder, ++sequence);
         assertEquals(FILLED, marketSellOrder.getState());
     }
 
@@ -178,20 +181,20 @@ public class OrderBookTest {
     @DisplayName("Test market orders that partially fill in the order book")
     void testPartialMarketOrders() {
         // build a book using limit orders
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L));
-        orderBook.addOrder(getValidLimitSellOrderWith(11L, 5L));
-        orderBook.addOrder(getValidLimitSellOrderWith(12L, 5L));
-        orderBook.addOrder(getValidLimitBuyOrderWith(9L, 5L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(11L, 5L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(12L, 5L), ++sequence);
+        orderBook.addOrder(getValidLimitBuyOrderWith(9L, 5L), ++sequence);
 
         // add a market buy order that partially fills and check the remaining quantity
         Order marketBuyOrder = getValidMarketBuyOrderWith(20L);
-        orderBook.addOrder(marketBuyOrder);
+        orderBook.addOrder(marketBuyOrder, ++sequence);
         assertEquals(5L, marketBuyOrder.getRemainingQuantity());
         assertEquals(CANCELLED, marketBuyOrder.getState());
 
         // add a market sell order that partially fills and check the remaining quantity
         Order marketSellOrder = getValidMarketSellOrderWith(12L);
-        orderBook.addOrder(marketSellOrder);
+        orderBook.addOrder(marketSellOrder, ++sequence);
         assertEquals(7L, marketSellOrder.getRemainingQuantity());
         assertEquals(CANCELLED, marketSellOrder.getState());
     }
@@ -200,11 +203,11 @@ public class OrderBookTest {
     @DisplayName("IOC order partially fills then cancels remainder")
     void testIOCPartialFillCancelsRemainder() {
         // build sell side depth
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L), ++sequence);
 
         // add IOC buy for 5 @ 10 -> should fill 3 and cancel remaining 2
         Order iocBuy = getValidIOCBuyOrderWith(10L, 5L);
-        orderBook.addOrder(iocBuy);
+        orderBook.addOrder(iocBuy, ++sequence);
 
         assertEquals(CANCELLED, iocBuy.getState());
         assertEquals(2L, iocBuy.getRemainingQuantity());
@@ -213,10 +216,10 @@ public class OrderBookTest {
     @Test
     @DisplayName("IOC order fully fills when liquidity is available")
     void testIOCFullFill() {
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 5L), ++sequence);
 
         Order iocBuy = getValidIOCBuyOrderWith(10L, 5L);
-        orderBook.addOrder(iocBuy);
+        orderBook.addOrder(iocBuy, ++sequence);
 
         assertEquals(FILLED, iocBuy.getState());
         assertEquals(0L, iocBuy.getRemainingQuantity());
@@ -226,10 +229,10 @@ public class OrderBookTest {
     @DisplayName("FOK order cancels when insufficient liquidity at price")
     void testFOKCancelsWhenInsufficient() {
         // only 3 available at price 10
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L), ++sequence);
 
         Order fokBuy = getValidFOKBuyOrderWith(10L, 5L);
-        orderBook.addOrder(fokBuy);
+        orderBook.addOrder(fokBuy, ++sequence);
 
         assertEquals(CANCELLED, fokBuy.getState());
         assertEquals(5L, fokBuy.getRemainingQuantity());
@@ -239,11 +242,11 @@ public class OrderBookTest {
     @DisplayName("FOK order fills fully when sufficient liquidity")
     void testFOKFillsWhenSufficient() {
         // 5 available at price 10
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L));
-        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L));
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 3L), ++sequence);
 
         Order fokBuy = getValidFOKBuyOrderWith(10L, 5L);
-        orderBook.addOrder(fokBuy);
+        orderBook.addOrder(fokBuy, ++sequence);
 
         assertEquals(FILLED, fokBuy.getState());
         assertEquals(0L, fokBuy.getRemainingQuantity());

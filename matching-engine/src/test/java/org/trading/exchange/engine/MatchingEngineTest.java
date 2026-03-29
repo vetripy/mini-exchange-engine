@@ -11,8 +11,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.trading.exchange.engine.command.CancelOrderCommand;
+import org.trading.exchange.engine.command.EngineCommand;
+import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.event.OrderEvent;
-import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.Order;
@@ -67,8 +70,8 @@ class MatchingEngineTest {
         Order buy = getValidLimitBuyOrderWith(100L, 5L);
         Order sell = getValidLimitSellOrderWith(100L, 5L);
 
-        engine.submit(OrderEvent.newOrder(buy));
-        engine.submit(OrderEvent.newOrder(sell));
+        engine.submit(NewOrderCommand.of(buy));
+        engine.submit(NewOrderCommand.of(sell));
 
         assertEquals(1, tradeListener.getTrades().size());
 
@@ -86,7 +89,7 @@ class MatchingEngineTest {
         MatchingEngine testEngine = new MatchingEngine(EngineMode.SYNC);
         // Given
         Order order = getValidLimitBuyOrderWith(10L, 10L);
-        OrderEvent event = OrderEvent.newOrder(order);
+        EngineCommand event = NewOrderCommand.of(order);
 
         // When & Then
         assertThrows(IllegalStateException.class, () -> testEngine.submit(event));
@@ -98,17 +101,17 @@ class MatchingEngineTest {
         Order buy = getValidLimitBuyOrderWith(100L, 10L);
         Order sell = getValidLimitSellOrderWith(100L, 4L);
 
-        engine.submit(OrderEvent.newOrder(buy));
-        engine.submit(OrderEvent.newOrder(sell));
+        engine.submit(NewOrderCommand.of(buy));
+        engine.submit(NewOrderCommand.of(sell));
 
         assertEquals(1, tradeListener.getTrades().size());
 
         TradeEvent tradeEvent = tradeListener.getTrades().getFirst();
         assertEquals(4L, tradeEvent.getQuantity());
 
-        OrderUpdate lastUpdate = orderUpdateListener.getUpdates().stream()
-                .filter(orderUpdate -> Objects.equals(orderUpdate.getOrderId(), buy.getOrderId()))
-                .toList().getLast();
+        OrderUpdateEvent lastUpdate = orderUpdateListener.getUpdates().stream()
+            .filter(orderUpdate -> Objects.equals(orderUpdate.getOrderId(), buy.getOrderId()))
+            .toList().getLast();
 
         assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
         assertEquals(6L, lastUpdate.getRemainingQuantity());
@@ -119,11 +122,11 @@ class MatchingEngineTest {
 
         Order buy = getValidLimitBuyOrderWith(100L, 5L);
 
-        engine.submit(OrderEvent.newOrder(buy));
-        engine.submit(OrderEvent.cancelOrder(buy.getOrderId()));
+        engine.submit(NewOrderCommand.of(buy));
+        engine.submit(CancelOrderCommand.of(buy.getOrderId()));
 
         System.out.println(orderUpdateListener.getUpdates());
-        OrderUpdate last = orderUpdateListener.latest();
+        OrderUpdateEvent last = orderUpdateListener.latest();
 
         assertEquals(OrderState.CANCELLED, last.getOrderState());
     }
@@ -134,15 +137,15 @@ class MatchingEngineTest {
         Order buy = getValidLimitBuyOrderWith(100L, 5L);
         Order sell = getValidLimitSellOrderWith(100L, 5L);
 
-        engine.submit(OrderEvent.newOrder(buy));
-        engine.submit(OrderEvent.newOrder(sell));
+        engine.submit(NewOrderCommand.of(buy));
+        engine.submit(NewOrderCommand.of(sell));
 
         List<Long> sequences = new ArrayList<>();
 
         orderUpdateListener.getUpdates().forEach(u -> sequences.add(u.getSequence()));
 
         for (int i = 1; i < sequences.size(); i++) {
-            assertTrue(sequences.get(i) > sequences.get(i - 1));
+            assertTrue(sequences.get(i) >= sequences.get(i - 1));
         }
     }
 
@@ -153,14 +156,14 @@ class MatchingEngineTest {
         Order sell2 = getValidLimitSellOrderWith(100L, 3L);
         Order buy = getValidLimitBuyOrderWith(101L, 5L);
 
-        engine.submit(OrderEvent.newOrder(sell1));
-        engine.submit(OrderEvent.newOrder(sell2));
-        engine.submit(OrderEvent.newOrder(buy));
+        engine.submit(NewOrderCommand.of(sell1));
+        engine.submit(NewOrderCommand.of(sell2));
+        engine.submit(NewOrderCommand.of(buy));
 
         assertEquals(2, tradeListener.getTrades().size());
 
         long totalQuantity =
-                tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
+            tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
 
         assertEquals(5L, totalQuantity);
     }
