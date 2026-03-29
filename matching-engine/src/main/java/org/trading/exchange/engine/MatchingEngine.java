@@ -5,23 +5,30 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
+import org.trading.exchange.engine.command.CancelOrderCommand;
+import org.trading.exchange.engine.command.EngineCommand;
+import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.event.EngineEvent;
+import org.trading.exchange.event.EngineEvent.Type;
 import org.trading.exchange.event.EngineEventHandler;
-import org.trading.exchange.event.OrderEvent;
-import org.trading.exchange.event.OrderUpdate;
+import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
+import org.trading.exchange.model.Envelope;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.orderbook.OrderBook;
+import org.trading.exchange.sequencer.Sequencer;
+import org.trading.exchange.util.EnvelopeUtil;
 
 public class MatchingEngine implements EngineEventHandler {
 
-    private final BlockingQueue<OrderEvent> inboundEvents;
+    private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
     private final BlockingQueue<EngineEvent> outboundEvents;
     private final OrderBook orderBook;
+    private final Sequencer sequencer;
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
@@ -32,12 +39,11 @@ public class MatchingEngine implements EngineEventHandler {
     private Thread engineThread;
     private Thread publisherThread;
 
-    private long sequence = 0L;
-
     public MatchingEngine(EngineMode mode) {
         this.mode = mode;
         this.state = EngineState.NEW;
         this.inboundEvents = new LinkedBlockingQueue<>();
+        this.sequencer = new Sequencer();
         this.outboundEvents = new ArrayBlockingQueue<>(10_000);
         this.orderBook = new OrderBook(this);
     }
@@ -81,7 +87,7 @@ public class MatchingEngine implements EngineEventHandler {
     private void engineLoop() {
         while (this.state == EngineState.RUNNING) {
             try {
-                OrderEvent event = inboundEvents.take();
+                Envelope<EngineCommand> event = inboundEvents.take();
                 process(event);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -104,39 +110,49 @@ public class MatchingEngine implements EngineEventHandler {
         }
     }
 
-  private void publishDirect(EngineEvent event) {
-    switch (event.getType()) {
-      case TRADE -> tradeListeners.forEach(l -> l.onTrade((TradeEvent) event.getData()));
-      case ORDER_UPDATE ->
-          orderUpdateListeners.forEach(l -> l.onOrderUpdate((OrderUpdate) event.getData()));
-    }
-  }
-
-  private void process(OrderEvent event) {
-    switch (event.getType()) {
-      case NEW_ORDER -> handleNewOrder(event.getOrder());
-      case CANCEL_ORDER -> handleCancelOrder(event.getOrderId());
-    }
-  }
-
-    private void handleNewOrder(Order order) {
-        System.out.println("Processing new order: " + order);
-        orderBook.addOrder(order);
+    private void publishDirect(EngineEvent event) {
+        switch (event.getType()) {
+            case TRADE -> tradeListeners.forEach(l -> l.onTrade((TradeEvent) event.getData()));
+            case ORDER_UPDATE -> orderUpdateListeners.forEach(
+                l -> l.onOrderUpdate((OrderUpdateEvent) event.getData()));
+        }
     }
 
-    private void handleCancelOrder(String orderId) {
-        System.out.println("Processing cancel order: " + orderId);
-        orderBook.cancelOrder(orderId);
+    private void process(Envelope<EngineCommand> event) {
+        EngineCommand command = EnvelopeUtil.unwrap(event);
+        long seq = event.sequence();
+        switch (command) {
+            case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
+            case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
+            default -> throw new IllegalStateException("Unsupported engine command: " + command);
+        }
     }
 
-    public void submit(OrderEvent event) throws InterruptedException {
+    private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
+        Order order = newOrderCommand.getOrder();
+        System.out.println("Processing new order: " + order + " with sequence: " + seq);
+        orderBook.addOrder(order, seq);
+    }
+
+    private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
+        String orderId = cancelOrderCommand.getOrderId();
+        System.out.println("Processing cancel order: " + orderId + " with sequence: " + seq);
+        orderBook.cancelOrder(orderId, seq);
+    }
+
+
+    public void submit(EngineCommand command) throws InterruptedException {
         if (this.state != EngineState.RUNNING) {
             throw new IllegalStateException("Engine is not running");
         }
+
+        long seq = sequencer.getNextSequence();
+        Envelope<EngineCommand> envelope = EnvelopeUtil.wrap(seq, command);
+
         if (EngineMode.SYNC.equals(this.mode)) {
-            process(event);
+            process(envelope);
         } else {
-            inboundEvents.put(event);
+            inboundEvents.put(envelope);
         }
     }
 
@@ -165,19 +181,10 @@ public class MatchingEngine implements EngineEventHandler {
         stateListeners.forEach(listener -> listener.onStateChange(oldState, newState, cause));
     }
 
-    private long nextSequence() {
-        return ++sequence;
-    }
-
     @Override
     public void onTrade(TradeEvent event) {
-        TradeEvent tradeEvent = TradeEvent.builder().sequence(nextSequence())
-                .tradeId(event.getTradeId()).buyOrderId(event.getBuyOrderId())
-                .sellOrderId(event.getSellOrderId()).tradePrice(event.getTradePrice())
-                .quantity(event.getQuantity()).timestamp(System.currentTimeMillis()).build();
-
-        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(tradeEvent.getSequence())
-                .type(EngineEvent.Type.TRADE).data(tradeEvent).build();
+        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
+            .type(Type.TRADE).data(event).build();
 
         if (mode == EngineMode.ASYNC) {
             try {
@@ -192,14 +199,9 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     @Override
-    public void onOrderUpdate(OrderUpdate event) {
-        OrderUpdate update = OrderUpdate.builder().sequence(nextSequence())
-                .orderId(event.getOrderId()).orderState(event.getOrderState())
-                .remainingQuantity(event.getRemainingQuantity()).timestamp(System.nanoTime())
-                .build();
-
-        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(update.getSequence())
-                .type(EngineEvent.Type.ORDER_UPDATE).data(update).build();
+    public void onOrderUpdate(OrderUpdateEvent event) {
+        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
+            .type(Type.ORDER_UPDATE).data(event).build();
 
         if (mode == EngineMode.ASYNC) {
             try {
