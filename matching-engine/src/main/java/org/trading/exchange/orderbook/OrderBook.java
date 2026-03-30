@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import org.trading.exchange.event.EngineEvent;
-import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.*;
@@ -19,14 +18,9 @@ public class OrderBook {
     private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, Deque<Order>> sellOrders = new TreeMap<>();
     private final Map<String, Order> orderIndex = new HashMap<>();
-    private final EngineEventHandler engineEventHandler;
     private final List<EngineEvent> eventBuffer = new ArrayList<>();
 
     private long currentSequence;
-
-    public OrderBook(EngineEventHandler engineEventHandler) {
-        this.engineEventHandler = engineEventHandler;
-    }
 
     public List<EngineEvent> addOrder(Order order, long seq) {
         eventBuffer.clear();
