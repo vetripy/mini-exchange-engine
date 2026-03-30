@@ -18,72 +18,21 @@ public class OrderBook {
     private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, Deque<Order>> sellOrders = new TreeMap<>();
     private final Map<String, Order> orderIndex = new HashMap<>();
-    private final List<EngineEvent> eventBuffer = new ArrayList<>();
-
-    private long currentSequence;
 
     public List<EngineEvent> addOrder(Order order, long seq) {
-        eventBuffer.clear();
-        this.currentSequence = seq;
-        emitOrderUpdate(order);
+        MatchContext ctx = new MatchContext(seq);
+        emitOrderUpdate(order, ctx);
         switch (order.getType()) {
-            case MARKET -> handleMarket(order);
-            case LIMIT -> handleLimit(order);
-            case IOC -> handleIOC(order);
-            case FOK -> handleFOK(order);
+            case MARKET -> handleMarket(order, ctx);
+            case LIMIT -> handleLimit(order, ctx);
+            case IOC -> handleIOC(order, ctx);
+            case FOK -> handleFOK(order, ctx);
         }
-        return new ArrayList<>(eventBuffer);
-    }
-
-    private void handleMarket(Order order) {
-        if (order.getSide() == OrderSide.BUY) {
-            matchMarketBuy(order);
-        } else {
-            matchMarketSell(order);
-        }
-    }
-
-    private void handleLimit(Order order) {
-        if (order.getSide() == OrderSide.BUY) {
-            matchBuy(order);
-        } else {
-            matchSell(order);
-        }
-    }
-
-    private void handleFOK(Order order) {
-        boolean canFill = order.getSide() == OrderSide.BUY
-                ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
-                : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
-
-        if (canFill) {
-            if (order.getSide() == OrderSide.BUY) {
-                matchBuy(order);
-            } else {
-                matchSell(order);
-            }
-        } else {
-            order.setState(OrderState.CANCELLED);
-            System.out.println("FOK order cancelled due to insufficient liquidity");
-        }
-    }
-
-    private void handleIOC(Order order) {
-        if (order.getSide() == OrderSide.BUY) {
-            matchBuy(order);
-        } else {
-            matchSell(order);
-        }
-
-        if (order.getRemainingQuantity() > 0) {
-            order.setState(OrderState.CANCELLED);
-            System.out.println("IOC remainder cancelled");
-        }
+        return ctx.getEvents();
     }
 
     public List<EngineEvent> cancelOrder(String orderId, long seq) {
-        eventBuffer.clear();
-        this.currentSequence = seq;
+        MatchContext ctx = new MatchContext(seq);
         Order order = orderIndex.get(orderId);
 
         if (order == null) {
@@ -92,7 +41,7 @@ public class OrderBook {
         }
 
         TreeMap<Long, Deque<Order>> book =
-                order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
+            order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         Deque<Order> queue = book.get(order.getPrice());
 
         if (queue != null) {
@@ -102,29 +51,13 @@ public class OrderBook {
             }
         }
         order.setState(OrderState.CANCELLED);
-        emitOrderUpdate(order);
+        emitOrderUpdate(order, ctx);
         orderIndex.remove(orderId);
         System.out.println("Cancelled order: " + orderId);
-        return new ArrayList<>(eventBuffer);
+        return ctx.getEvents();
     }
 
-    public Map<Long, List<Order>> getBuySnapshot() {
-        Map<Long, List<Order>> snapshot = new TreeMap<>(Comparator.reverseOrder());
-        for (Map.Entry<Long, Deque<Order>> entry : buyOrders.entrySet()) {
-            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-        return snapshot;
-    }
-
-    public Map<Long, List<Order>> getSellSnapshot() {
-        Map<Long, List<Order>> snapshot = new TreeMap<>();
-        for (Map.Entry<Long, Deque<Order>> entry : sellOrders.entrySet()) {
-            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
-        }
-        return snapshot;
-    }
-
-    private void matchBuy(Order order) {
+    private void matchBuy(Order order, MatchContext ctx) {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order sellOrder = queue.peek();
@@ -133,7 +66,7 @@ public class OrderBook {
                 break;
             }
 
-            executeTrade(order, sellOrder);
+            executeTrade(order, sellOrder, ctx);
             if (sellOrder.getRemainingQuantity() == 0) {
                 queue.poll();
                 orderIndex.remove(sellOrder.getOrderId());
@@ -147,7 +80,7 @@ public class OrderBook {
         }
     }
 
-    private void matchSell(Order order) {
+    private void matchSell(Order order, MatchContext ctx) {
         while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = buyOrders.firstEntry().getValue();
             Order buyOrder = queue.peek();
@@ -155,7 +88,7 @@ public class OrderBook {
             if (order.getPrice() > buyOrder.getPrice()) {
                 break;
             }
-            executeTrade(buyOrder, order);
+            executeTrade(buyOrder, order, ctx);
             if (buyOrder.getRemainingQuantity() == 0) {
                 queue.poll();
                 orderIndex.remove(buyOrder.getOrderId());
@@ -169,11 +102,11 @@ public class OrderBook {
         }
     }
 
-    private void matchMarketBuy(Order order) {
+    private void matchMarketBuy(Order order, MatchContext ctx) {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order bestSell = queue.peek();
-            executeTrade(order, bestSell);
+            executeTrade(order, bestSell, ctx);
             if (bestSell.getRemainingQuantity() == 0) {
                 queue.poll();
                 orderIndex.remove(bestSell.getOrderId());
@@ -184,17 +117,17 @@ public class OrderBook {
         }
         if (order.getRemainingQuantity() > 0) {
             System.out.println("Market buy order partially filled, remaining quantity: "
-                    + order.getRemainingQuantity());
+                + order.getRemainingQuantity());
             System.out.println("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
         }
     }
 
-    private void matchMarketSell(Order order) {
+    private void matchMarketSell(Order order, MatchContext ctx) {
         while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = buyOrders.firstEntry().getValue();
             Order bestBuy = queue.peek();
-            executeTrade(bestBuy, order);
+            executeTrade(bestBuy, order, ctx);
             if (bestBuy.getRemainingQuantity() == 0) {
                 queue.poll();
                 orderIndex.remove(bestBuy.getOrderId());
@@ -205,9 +138,55 @@ public class OrderBook {
         }
         if (order.getRemainingQuantity() > 0) {
             System.out.println("Market sell order partially filled, remaining quantity: "
-                    + order.getRemainingQuantity());
+                + order.getRemainingQuantity());
             System.out.println("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
+        }
+    }
+
+    private void handleMarket(Order order, MatchContext ctx) {
+        if (order.getSide() == OrderSide.BUY) {
+            matchMarketBuy(order, ctx);
+        } else {
+            matchMarketSell(order, ctx);
+        }
+    }
+
+    private void handleLimit(Order order, MatchContext ctx) {
+        if (order.getSide() == OrderSide.BUY) {
+            matchBuy(order, ctx);
+        } else {
+            matchSell(order, ctx);
+        }
+    }
+
+    private void handleFOK(Order order, MatchContext ctx) {
+        boolean canFill = order.getSide() == OrderSide.BUY
+            ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
+            : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
+
+        if (canFill) {
+            if (order.getSide() == OrderSide.BUY) {
+                matchBuy(order, ctx);
+            } else {
+                matchSell(order, ctx);
+            }
+        } else {
+            order.setState(OrderState.CANCELLED);
+            System.out.println("FOK order cancelled due to insufficient liquidity");
+        }
+    }
+
+    private void handleIOC(Order order, MatchContext ctx) {
+        if (order.getSide() == OrderSide.BUY) {
+            matchBuy(order, ctx);
+        } else {
+            matchSell(order, ctx);
+        }
+
+        if (order.getRemainingQuantity() > 0) {
+            order.setState(OrderState.CANCELLED);
+            System.out.println("IOC remainder cancelled");
         }
     }
 
@@ -216,15 +195,15 @@ public class OrderBook {
         orderIndex.put(order.getOrderId(), order);
     }
 
-    private void executeTrade(Order buyOrder, Order sellOrder) {
+    private void executeTrade(Order buyOrder, Order sellOrder, MatchContext ctx) {
         long tradeQuantity =
-                Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
+            Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
         buyOrder.reduceQuantity(tradeQuantity);
         sellOrder.reduceQuantity(tradeQuantity);
         Long tradePrice = sellOrder.getPrice() == null ? buyOrder.getPrice() : sellOrder.getPrice();
-        emitOrderUpdate(buyOrder);
-        emitOrderUpdate(sellOrder);
-        emitTrade(buyOrder, sellOrder, tradePrice, tradeQuantity);
+        emitOrderUpdate(buyOrder, ctx);
+        emitOrderUpdate(sellOrder, ctx);
+        emitTrade(buyOrder, sellOrder, tradePrice, tradeQuantity, ctx);
     }
 
     private long availableSellLiquidity(Long priceLimit) {
@@ -259,21 +238,38 @@ public class OrderBook {
         return total;
     }
 
-    private void emitOrderUpdate(Order order) {
-        OrderUpdateEvent update = OrderUpdateEvent.builder().sequence(this.currentSequence)
-                .orderId(order.getOrderId()).orderState(order.getState())
-                .remainingQuantity(order.getRemainingQuantity()).timestamp(System.nanoTime())
-                .build();
+    private void emitOrderUpdate(Order order, MatchContext ctx) {
+        OrderUpdateEvent update = OrderUpdateEvent.builder().sequence(ctx.getSequence())
+            .orderId(order.getOrderId()).orderState(order.getState())
+            .remainingQuantity(order.getRemainingQuantity()).timestamp(System.nanoTime())
+            .build();
 
-        eventBuffer.add(update);
+        ctx.emit(update);
     }
 
-    private void emitTrade(Order buyOrder, Order sellOrder, Long price, Long quantity) {
-        TradeEvent tradeEvent = TradeEvent.builder().sequence(this.currentSequence)
-                .buyOrderId(buyOrder.getOrderId()).sellOrderId(sellOrder.getOrderId())
-                .tradePrice(price).quantity(quantity).timestamp(System.currentTimeMillis()).build();
+    private void emitTrade(Order buyOrder, Order sellOrder, Long price, Long quantity,
+        MatchContext ctx) {
+        TradeEvent tradeEvent = TradeEvent.builder().sequence(ctx.getSequence())
+            .buyOrderId(buyOrder.getOrderId()).sellOrderId(sellOrder.getOrderId())
+            .tradePrice(price).quantity(quantity).timestamp(System.currentTimeMillis()).build();
 
-        eventBuffer.add(tradeEvent);
+        ctx.emit(tradeEvent);
+    }
+
+    public Map<Long, List<Order>> getBuySnapshot() {
+        Map<Long, List<Order>> snapshot = new TreeMap<>(Comparator.reverseOrder());
+        for (Map.Entry<Long, Deque<Order>> entry : buyOrders.entrySet()) {
+            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return snapshot;
+    }
+
+    public Map<Long, List<Order>> getSellSnapshot() {
+        Map<Long, List<Order>> snapshot = new TreeMap<>();
+        for (Map.Entry<Long, Deque<Order>> entry : sellOrders.entrySet()) {
+            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        return snapshot;
     }
 
     public void displayBook() {
