@@ -9,7 +9,6 @@ import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.event.EngineEvent;
-import org.trading.exchange.event.EngineEvent.Type;
 import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
@@ -110,18 +109,30 @@ public class MatchingEngine implements EngineEventHandler {
         }
     }
 
-    private void publishDirect(EngineEvent event) {
-        switch (event.getType()) {
-            case TRADE -> tradeListeners.forEach(l -> l.onTrade((TradeEvent) event.getData()));
-            case ORDER_UPDATE -> orderUpdateListeners.forEach(
-                l -> l.onOrderUpdate((OrderUpdateEvent) event.getData()));
+    public void submit(EngineCommand command) throws InterruptedException {
+        if (this.state != EngineState.RUNNING) {
+            throw new IllegalStateException("Engine is not running");
+        }
+
+        long seq = sequencer.getNextSequence();
+        Envelope<EngineCommand> envelope = EnvelopeUtil.wrap(seq, command);
+
+        if (EngineMode.SYNC.equals(this.mode)) {
+            process(envelope);
+        } else {
+            inboundEvents.put(envelope);
         }
     }
 
     private void process(Envelope<EngineCommand> event) {
-        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
+        EngineCommand command = EnvelopeUtil.unwrap(event);
+        long seq = event.sequence();
 
-        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
+        switch (command) {
+            case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
+            case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
+            default -> throw new IllegalStateException("Unsupported engine command: " + command);
+        }
     }
 
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
@@ -136,19 +147,12 @@ public class MatchingEngine implements EngineEventHandler {
         orderBook.cancelOrder(orderId, seq);
     }
 
-
-    public void submit(EngineCommand command) throws InterruptedException {
-        if (this.state != EngineState.RUNNING) {
-            throw new IllegalStateException("Engine is not running");
-        }
-
-        long seq = sequencer.getNextSequence();
-        Envelope<EngineCommand> envelope = EnvelopeUtil.wrap(seq, command);
-
-        if (EngineMode.SYNC.equals(this.mode)) {
-            process(envelope);
-        } else {
-            inboundEvents.put(envelope);
+    private void publishDirect(EngineEvent engineEvent) {
+        switch (engineEvent) {
+            case TradeEvent event -> tradeListeners.forEach(l -> l.onTrade(event));
+            case OrderUpdateEvent event ->
+                orderUpdateListeners.forEach(l -> l.onOrderUpdate(event));
+            default -> throw new IllegalStateException("Unsupported engine event: " + engineEvent);
         }
     }
 
@@ -178,10 +182,7 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     @Override
-    public void onTrade(TradeEvent event) {
-        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
-                .type(Type.TRADE).data(event).build();
-
+    public void onTrade(TradeEvent engineEvent) {
         if (mode == EngineMode.ASYNC) {
             try {
                 outboundEvents.put(engineEvent);
@@ -195,10 +196,7 @@ public class MatchingEngine implements EngineEventHandler {
     }
 
     @Override
-    public void onOrderUpdate(OrderUpdateEvent event) {
-        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
-                .type(Type.ORDER_UPDATE).data(event).build();
-
+    public void onOrderUpdate(OrderUpdateEvent engineEvent) {
         if (mode == EngineMode.ASYNC) {
             try {
                 outboundEvents.put(engineEvent);
