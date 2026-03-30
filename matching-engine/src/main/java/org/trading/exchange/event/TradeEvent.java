@@ -5,7 +5,7 @@ import lombok.Getter;
 
 @Getter
 @Builder
-public class TradeEvent {
+public class TradeEvent implements EngineEvent {
 
     private final long sequence;
     private final String tradeId;

@@ -7,8 +7,7 @@ import org.trading.exchange.model.OrderState;
 
 @Getter
 @Builder
-@ToString
-public class OrderUpdateEvent {
+public class OrderUpdateEvent implements EngineEvent {
 
     private final long sequence;
     private final String orderId;
