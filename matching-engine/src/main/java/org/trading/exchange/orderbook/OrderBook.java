@@ -213,7 +213,7 @@ public class OrderBook {
     }
 
     private long availableSellLiquidity(Long priceLimit) {
-        Long total = 0L;
+        long total = 0L;
 
         for (var entry : sellOrders.entrySet()) {
             if (entry.getKey() > priceLimit) {
@@ -229,7 +229,7 @@ public class OrderBook {
     }
 
     private long availableBuyLiquidity(Long priceLimit) {
-        Long total = 0L;
+        long total = 0L;
 
         for (var entry : buyOrders.entrySet()) {
             if (entry.getKey() < priceLimit) {
