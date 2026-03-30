@@ -124,14 +124,9 @@ public class MatchingEngine {
     }
 
     private void process(Envelope<EngineCommand> event) {
-        EngineCommand command = EnvelopeUtil.unwrap(event);
-        long seq = event.sequence();
+        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
 
-        switch (command) {
-            case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
-            case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
-            default -> throw new IllegalStateException("Unsupported engine command: " + command);
-        }
+        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
     }
 
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
@@ -194,7 +189,7 @@ public class MatchingEngine {
 
         stateListeners.forEach(listener -> listener.onStateChange(oldState, newState, cause));
     }
-    
+
     public void addTradeListener(TradeListener listener) {
         tradeListeners.add(listener);
     }
