@@ -11,6 +11,7 @@ import lombok.ToString;
 @ToString
 @Builder(access = AccessLevel.PRIVATE)
 public class Order {
+
     private final String orderId;
     private final String userId;
     private final OrderSide side;
@@ -23,6 +24,9 @@ public class Order {
     @Builder.Default
     @Setter
     private OrderState state = OrderState.NEW;
+
+    // helper factory methods for creating different types of orders with validation
+    // can be removed or moved to a factory class if needed, used only for tests.
 
     public static Order createLimitOrder(String id, String userId, OrderSide side, Long price,
             Long quantity) {
