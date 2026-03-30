@@ -138,13 +138,13 @@ public class MatchingEngine implements EngineEventHandler {
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
         Order order = newOrderCommand.getOrder();
         System.out.println("Processing new order: " + order + " with sequence: " + seq);
-        orderBook.addOrder(order, seq);
+        List<EngineEvent> events = orderBook.addOrder(order, seq);
     }
 
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String orderId = cancelOrderCommand.getOrderId();
         System.out.println("Processing cancel order: " + orderId + " with sequence: " + seq);
-        orderBook.cancelOrder(orderId, seq);
+        List<EngineEvent> events = orderBook.cancelOrder(orderId, seq);
     }
 
     private void publishDirect(EngineEvent engineEvent) {

@@ -28,7 +28,8 @@ public class OrderBook {
         this.engineEventHandler = engineEventHandler;
     }
 
-    public void addOrder(Order order, long seq) {
+    public List<EngineEvent> addOrder(Order order, long seq) {
+        eventBuffer.clear();
         this.currentSequence = seq;
         emitOrderUpdate(order);
         switch (order.getType()) {
@@ -37,6 +38,7 @@ public class OrderBook {
             case IOC -> handleIOC(order);
             case FOK -> handleFOK(order);
         }
+        return new ArrayList<>(eventBuffer);
     }
 
     private void handleMarket(Order order) {
@@ -85,7 +87,8 @@ public class OrderBook {
         }
     }
 
-    public void cancelOrder(String orderId, long seq) {
+    public List<EngineEvent> cancelOrder(String orderId, long seq) {
+        eventBuffer.clear();
         this.currentSequence = seq;
         Order order = orderIndex.get(orderId);
 
@@ -108,6 +111,7 @@ public class OrderBook {
         emitOrderUpdate(order);
         orderIndex.remove(orderId);
         System.out.println("Cancelled order: " + orderId);
+        return new ArrayList<>(eventBuffer);
     }
 
     public Map<Long, List<Order>> getBuySnapshot() {
@@ -267,7 +271,7 @@ public class OrderBook {
             .remainingQuantity(order.getRemainingQuantity()).timestamp(System.nanoTime())
             .build();
 
-        engineEventHandler.onOrderUpdate(update);
+        eventBuffer.add(update);
     }
 
     private void emitTrade(Order buyOrder, Order sellOrder, Long price, Long quantity) {
@@ -275,7 +279,7 @@ public class OrderBook {
             .buyOrderId(buyOrder.getOrderId()).sellOrderId(sellOrder.getOrderId())
             .tradePrice(price).quantity(quantity).timestamp(System.currentTimeMillis()).build();
 
-        engineEventHandler.onTrade(tradeEvent);
+        eventBuffer.add(tradeEvent);
     }
 
     public void displayBook() {
