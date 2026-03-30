@@ -40,6 +40,8 @@ public class OrderBook {
             throw new IllegalArgumentException("Order not found: " + orderId);
         }
 
+        emitOrderUpdate(order, ctx);
+
         TreeMap<Long, Deque<Order>> book =
             order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         Deque<Order> queue = book.get(order.getPrice());
@@ -120,6 +122,7 @@ public class OrderBook {
                 + order.getRemainingQuantity());
             System.out.println("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
+            emitOrderUpdate(order, ctx);
         }
     }
 
@@ -141,6 +144,7 @@ public class OrderBook {
                 + order.getRemainingQuantity());
             System.out.println("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
+            emitOrderUpdate(order, ctx);
         }
     }
 
@@ -173,6 +177,7 @@ public class OrderBook {
             }
         } else {
             order.setState(OrderState.CANCELLED);
+            emitOrderUpdate(order, ctx);
             System.out.println("FOK order cancelled due to insufficient liquidity");
         }
     }
@@ -186,6 +191,7 @@ public class OrderBook {
 
         if (order.getRemainingQuantity() > 0) {
             order.setState(OrderState.CANCELLED);
+            emitOrderUpdate(order, ctx);
             System.out.println("IOC remainder cancelled");
         }
     }
