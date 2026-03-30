@@ -9,9 +9,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.trading.exchange.event.EngineEventHandler;
-import org.trading.exchange.event.OrderUpdateEvent;
-import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.Order;
 
 public class OrderBookTest {
@@ -21,13 +18,7 @@ public class OrderBookTest {
 
     @BeforeEach
     void setUp() {
-        orderBook = new OrderBook(new EngineEventHandler() {
-            @Override
-            public void onTrade(TradeEvent event) {}
-
-            @Override
-            public void onOrderUpdate(OrderUpdateEvent event) {}
-        });
+        orderBook = new OrderBook();
     }
 
     @Test

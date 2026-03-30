@@ -9,8 +9,6 @@ import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.event.EngineEvent;
-import org.trading.exchange.event.EngineEvent.Type;
-import org.trading.exchange.event.EngineEventHandler;
 import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.listener.OrderUpdateListener;
@@ -23,7 +21,7 @@ import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
 import org.trading.exchange.util.EnvelopeUtil;
 
-public class MatchingEngine implements EngineEventHandler {
+public class MatchingEngine {
 
     private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
     private final BlockingQueue<EngineEvent> outboundEvents;
@@ -45,7 +43,7 @@ public class MatchingEngine implements EngineEventHandler {
         this.inboundEvents = new LinkedBlockingQueue<>();
         this.sequencer = new Sequencer();
         this.outboundEvents = new ArrayBlockingQueue<>(10_000);
-        this.orderBook = new OrderBook(this);
+        this.orderBook = new OrderBook();
     }
 
     public synchronized void start() {
@@ -110,33 +108,6 @@ public class MatchingEngine implements EngineEventHandler {
         }
     }
 
-    private void publishDirect(EngineEvent event) {
-        switch (event.getType()) {
-            case TRADE -> tradeListeners.forEach(l -> l.onTrade((TradeEvent) event.getData()));
-            case ORDER_UPDATE -> orderUpdateListeners.forEach(
-                l -> l.onOrderUpdate((OrderUpdateEvent) event.getData()));
-        }
-    }
-
-    private void process(Envelope<EngineCommand> event) {
-        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
-
-        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
-    }
-
-    private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
-        Order order = newOrderCommand.getOrder();
-        System.out.println("Processing new order: " + order + " with sequence: " + seq);
-        orderBook.addOrder(order, seq);
-    }
-
-    private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
-        String orderId = cancelOrderCommand.getOrderId();
-        System.out.println("Processing cancel order: " + orderId + " with sequence: " + seq);
-        orderBook.cancelOrder(orderId, seq);
-    }
-
-
     public void submit(EngineCommand command) throws InterruptedException {
         if (this.state != EngineState.RUNNING) {
             throw new IllegalStateException("Engine is not running");
@@ -149,6 +120,48 @@ public class MatchingEngine implements EngineEventHandler {
             process(envelope);
         } else {
             inboundEvents.put(envelope);
+        }
+    }
+
+    private void process(Envelope<EngineCommand> event) {
+        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
+
+        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
+    }
+
+    private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
+        Order order = newOrderCommand.getOrder();
+        System.out.println("Processing new order: " + order + " with sequence: " + seq);
+        List<EngineEvent> events = orderBook.addOrder(order, seq);
+        events.forEach(this::handleOutbound);
+    }
+
+    private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
+        String orderId = cancelOrderCommand.getOrderId();
+        System.out.println("Processing cancel order: " + orderId + " with sequence: " + seq);
+        List<EngineEvent> events = orderBook.cancelOrder(orderId, seq);
+        events.forEach(this::handleOutbound);
+    }
+
+    private void publishDirect(EngineEvent engineEvent) {
+        switch (engineEvent) {
+            case TradeEvent event -> tradeListeners.forEach(l -> l.onTrade(event));
+            case OrderUpdateEvent event ->
+                orderUpdateListeners.forEach(l -> l.onOrderUpdate(event));
+            default -> throw new IllegalStateException("Unsupported engine event: " + engineEvent);
+        }
+    }
+
+    private void handleOutbound(EngineEvent event) {
+        if (mode == EngineMode.ASYNC) {
+            try {
+                outboundEvents.put(event);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                failEngine(e);
+            }
+        } else {
+            publishDirect(event);
         }
     }
 
@@ -175,40 +188,6 @@ public class MatchingEngine implements EngineEventHandler {
         this.state = newState;
 
         stateListeners.forEach(listener -> listener.onStateChange(oldState, newState, cause));
-    }
-
-    @Override
-    public void onTrade(TradeEvent event) {
-        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
-                .type(Type.TRADE).data(event).build();
-
-        if (mode == EngineMode.ASYNC) {
-            try {
-                outboundEvents.put(engineEvent);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                failEngine(e);
-            }
-        } else {
-            publishDirect(engineEvent);
-        }
-    }
-
-    @Override
-    public void onOrderUpdate(OrderUpdateEvent event) {
-        EngineEvent engineEvent = EngineEvent.builder().sequenceNumber(event.getSequence())
-                .type(Type.ORDER_UPDATE).data(event).build();
-
-        if (mode == EngineMode.ASYNC) {
-            try {
-                outboundEvents.put(engineEvent);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                failEngine(e);
-            }
-        } else {
-            publishDirect(engineEvent);
-        }
     }
 
     public void addTradeListener(TradeListener listener) {
