@@ -8,6 +8,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
@@ -25,6 +26,7 @@ import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
 import org.trading.exchange.util.EnvelopeUtil;
 
+@Slf4j
 public class MatchingEngine {
 
     private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
@@ -132,15 +134,20 @@ public class MatchingEngine {
     }
 
     private void process(Envelope<EngineCommand> event) {
-        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
+        EngineCommand command = EnvelopeUtil.unwrap(event);
+        long seq = event.sequence();
 
-        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
+        switch (command) {
+            case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
+            case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
+            default -> throw new IllegalStateException("Unsupported engine command: " + command);
+        }
     }
 
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
         Order order = buildOrderFromCommand(newOrderCommand, seq);
         clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
-        System.out.println("Processing new order: " + order + " with sequence: " + seq);
+        log.info("Processing new order: {} with sequence: {}", order, seq);
         OrderBook orderBook = books.get(order.getSymbol().name());
         List<EngineEvent> events = orderBook.addOrder(order, seq);
         events.forEach(this::handleOutbound);
@@ -149,15 +156,15 @@ public class MatchingEngine {
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
         String orderId = cmd.getSymbol() + "-" + seq;
         return Order.builder().orderId(orderId).clientOrderId(cmd.getClientOrderId())
-                .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol())).side(cmd.getSide())
-                .type(cmd.getType()).price(cmd.getPrice()).remainingQuantity(cmd.getQuantity())
-                .build();
+            .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol())).side(cmd.getSide())
+            .type(cmd.getType()).price(cmd.getPrice()).remainingQuantity(cmd.getQuantity())
+            .build();
 
     }
 
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String clientOrderId = cancelOrderCommand.getClientOrderId();
-        System.out.println("Processing cancel order: " + clientOrderId + " with sequence: " + seq);
+        log.info("Processing cancel order: {} with sequence: {}", clientOrderId, seq);
 
         String orderId = clientIdToOrderId.get(cancelOrderCommand.getClientOrderId());
         if (orderId == null) {

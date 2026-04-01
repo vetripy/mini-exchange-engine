@@ -140,8 +140,7 @@ class MatchingEngineTest {
 
         engine.submit(buyCommand);
         engine.submit(CancelOrderCommand.of(((NewOrderCommand) buyCommand).getClientOrderId()));
-
-        System.out.println(orderUpdateListener.getUpdates());
+        
         OrderUpdateEvent last = orderUpdateListener.latest();
 
         assertEquals(OrderState.CANCELLED, last.getOrderState());
