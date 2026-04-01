@@ -19,22 +19,9 @@ public class NewOrderCommand implements EngineCommand {
     private final Long quantity;
 
 
-    public static NewOrderCommand of(
-        String clientOrderId,
-        String symbol,
-        OrderSide side,
-        OrderType type,
-        String userId,
-        Long price,
-        Long quantity
-    ) {
-        return NewOrderCommand.builder().clientOrderId(clientOrderId)
-            .symbol(symbol)
-            .side(side)
-            .type(type)
-            .price(price)
-            .userId(userId)
-            .quantity(quantity)
-            .build();
+    public static NewOrderCommand of(String clientOrderId, String symbol, OrderSide side,
+            OrderType type, String userId, Long price, Long quantity) {
+        return NewOrderCommand.builder().clientOrderId(clientOrderId).symbol(symbol).side(side)
+                .type(type).price(price).userId(userId).quantity(quantity).build();
     }
 }

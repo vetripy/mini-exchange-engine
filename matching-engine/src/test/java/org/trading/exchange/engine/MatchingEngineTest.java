@@ -92,9 +92,9 @@ class MatchingEngineTest {
         assertEquals(100L, tradeEvent.getTradePrice());
         assertEquals(5L, tradeEvent.getQuantity());
         assertEquals(((NewOrderCommand) buyCommand).getClientOrderId(),
-            tradeEvent.getBuyClientOrderId());
+                tradeEvent.getBuyClientOrderId());
         assertEquals(((NewOrderCommand) sellCommand).getClientOrderId(),
-            tradeEvent.getSellClientOrderId());
+                tradeEvent.getSellClientOrderId());
     }
 
     @Test
@@ -122,10 +122,11 @@ class MatchingEngineTest {
         TradeEvent tradeEvent = tradeListener.getTrades().getFirst();
         assertEquals(4L, tradeEvent.getQuantity());
 
-        OrderUpdateEvent lastUpdate = orderUpdateListener.getUpdates().stream()
-            .filter(orderUpdate -> Objects.equals(orderUpdate.getClientOrderId(),
-                ((NewOrderCommand) buyCommand).getClientOrderId()))
-            .toList().getLast();
+        OrderUpdateEvent lastUpdate =
+                orderUpdateListener.getUpdates().stream()
+                        .filter(orderUpdate -> Objects.equals(orderUpdate.getClientOrderId(),
+                                ((NewOrderCommand) buyCommand).getClientOrderId()))
+                        .toList().getLast();
 
         assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
         assertEquals(6L, lastUpdate.getRemainingQuantity());
@@ -177,7 +178,7 @@ class MatchingEngineTest {
         assertEquals(2, tradeListener.getTrades().size());
 
         long totalQuantity =
-            tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
+                tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
 
         assertEquals(5L, totalQuantity);
     }
@@ -189,7 +190,7 @@ class MatchingEngineTest {
         engine.submit(buyCommand);
 
         assertThrows(IllegalArgumentException.class,
-            () -> engine.submit(CancelOrderCommand.of("unknown-client-id")));
+                () -> engine.submit(CancelOrderCommand.of("unknown-client-id")));
     }
 
     @Test
