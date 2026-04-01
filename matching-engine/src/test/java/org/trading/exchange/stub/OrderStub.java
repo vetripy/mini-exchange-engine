@@ -5,6 +5,7 @@ import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderSide;
 
 public class OrderStub {
+
     public static Order getValidLimitBuyOrderWith(Long price, Long quantity) {
         return Order.createLimitOrder(UUID.randomUUID().toString(), "user1", OrderSide.BUY, price,
                 quantity);

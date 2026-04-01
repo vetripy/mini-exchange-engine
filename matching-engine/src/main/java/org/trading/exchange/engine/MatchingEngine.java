@@ -1,10 +1,13 @@
 package org.trading.exchange.engine;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
+import lombok.Getter;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
@@ -17,6 +20,7 @@ import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
 import org.trading.exchange.model.Envelope;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.model.Symbol;
 import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
 import org.trading.exchange.util.EnvelopeUtil;
@@ -25,14 +29,16 @@ public class MatchingEngine {
 
     private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
     private final BlockingQueue<EngineEvent> outboundEvents;
-    private final OrderBook orderBook;
     private final Sequencer sequencer;
+    private final Map<String, String> clientIdToOrderId = new HashMap<>();
+    private final Map<String, OrderBook> books = new HashMap<>();
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
     private final List<EngineStateListener> stateListeners = new CopyOnWriteArrayList<>();
 
     private final EngineMode mode;
+    @Getter
     private volatile EngineState state;
     private Thread engineThread;
     private Thread publisherThread;
@@ -43,7 +49,9 @@ public class MatchingEngine {
         this.inboundEvents = new LinkedBlockingQueue<>();
         this.sequencer = new Sequencer();
         this.outboundEvents = new ArrayBlockingQueue<>(10_000);
-        this.orderBook = new OrderBook();
+        for (Symbol symbol : Symbol.values()) {
+            books.put(symbol.name(), new OrderBook());
+        }
     }
 
     public synchronized void start() {
@@ -130,17 +138,40 @@ public class MatchingEngine {
     }
 
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
-        Order order = newOrderCommand.getOrder();
+        Order order = buildOrderFromCommand(newOrderCommand, seq);
+        clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
         System.out.println("Processing new order: " + order + " with sequence: " + seq);
+        OrderBook orderBook = books.get(order.getSymbol().name());
         List<EngineEvent> events = orderBook.addOrder(order, seq);
         events.forEach(this::handleOutbound);
     }
 
+    private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
+        String orderId = cmd.getSymbol() + "-" + seq;
+        return Order.builder().orderId(orderId).clientOrderId(cmd.getClientOrderId())
+                .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol())).side(cmd.getSide())
+                .type(cmd.getType()).price(cmd.getPrice()).remainingQuantity(cmd.getQuantity())
+                .build();
+
+    }
+
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
-        String orderId = cancelOrderCommand.getOrderId();
-        System.out.println("Processing cancel order: " + orderId + " with sequence: " + seq);
+        String clientOrderId = cancelOrderCommand.getClientOrderId();
+        System.out.println("Processing cancel order: " + clientOrderId + " with sequence: " + seq);
+
+        String orderId = clientIdToOrderId.get(cancelOrderCommand.getClientOrderId());
+        if (orderId == null) {
+            throw new IllegalArgumentException("Unknown clientOrderId");
+        }
+        String symbol = parseSymbolFromOrderId(orderId);
+
+        OrderBook orderBook = books.get(Symbol.from(symbol).name());
         List<EngineEvent> events = orderBook.cancelOrder(orderId, seq);
         events.forEach(this::handleOutbound);
+    }
+
+    private String parseSymbolFromOrderId(String orderId) {
+        return orderId.split("-")[0];
     }
 
     private void publishDirect(EngineEvent engineEvent) {
@@ -201,4 +232,5 @@ public class MatchingEngine {
     public void addStateListener(EngineStateListener listener) {
         stateListeners.add(listener);
     }
+
 }

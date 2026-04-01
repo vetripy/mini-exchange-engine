@@ -1,7 +1,6 @@
 package org.trading.exchange.model;
 
 import java.time.Instant;
-import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,10 +8,13 @@ import lombok.ToString;
 
 @Getter
 @ToString
-@Builder(access = AccessLevel.PRIVATE)
+@Builder
 public class Order {
+
     private final String orderId;
+    private final String clientOrderId;
     private final String userId;
+    private final Symbol symbol;
     private final OrderSide side;
     private final OrderType type;
     private final Long price;
@@ -23,6 +25,9 @@ public class Order {
     @Builder.Default
     @Setter
     private OrderState state = OrderState.NEW;
+
+    // helper factory methods for creating different types of orders with validation
+    // can be removed or moved to a factory class if needed, used only for tests.
 
     public static Order createLimitOrder(String id, String userId, OrderSide side, Long price,
             Long quantity) {
