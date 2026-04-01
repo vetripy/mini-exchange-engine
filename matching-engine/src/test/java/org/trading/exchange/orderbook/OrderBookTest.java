@@ -240,4 +240,145 @@ public class OrderBookTest {
         assertEquals(FILLED, fokBuy.getState());
         assertEquals(0L, fokBuy.getRemainingQuantity());
     }
+
+    @Test
+    @DisplayName("Market buy order with no liquidity gets cancelled")
+    void testMarketBuyWithNoLiquidity() {
+        Order marketBuy = getValidMarketBuyOrderWith(5L);
+        orderBook.addOrder(marketBuy, ++sequence);
+
+        assertEquals(CANCELLED, marketBuy.getState());
+        assertEquals(5L, marketBuy.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("Market sell order with no liquidity gets cancelled")
+    void testMarketSellWithNoLiquidity() {
+        Order marketSell = getValidMarketSellOrderWith(5L);
+        orderBook.addOrder(marketSell, ++sequence);
+
+        assertEquals(CANCELLED, marketSell.getState());
+        assertEquals(5L, marketSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("IOC sell order partially fills then cancels remainder")
+    void testIOCPartialFillSellCancelsRemainder() {
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 3L), ++sequence);
+
+        Order iocSell = getValidIOCSellOrderWith(10L, 5L);
+        orderBook.addOrder(iocSell, ++sequence);
+
+        assertEquals(CANCELLED, iocSell.getState());
+        assertEquals(2L, iocSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("IOC sell order fully fills when liquidity is available")
+    void testIOCSellFullFill() {
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 5L), ++sequence);
+
+        Order iocSell = getValidIOCSellOrderWith(10L, 5L);
+        orderBook.addOrder(iocSell, ++sequence);
+
+        assertEquals(FILLED, iocSell.getState());
+        assertEquals(0L, iocSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("IOC buy order with no liquidity gets cancelled")
+    void testIOCBuyWithNoLiquidity() {
+        Order iocBuy = getValidIOCBuyOrderWith(10L, 5L);
+        orderBook.addOrder(iocBuy, ++sequence);
+
+        assertEquals(CANCELLED, iocBuy.getState());
+        assertEquals(5L, iocBuy.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("IOC sell order with no liquidity gets cancelled")
+    void testIOCSellWithNoLiquidity() {
+        Order iocSell = getValidIOCSellOrderWith(10L, 5L);
+        orderBook.addOrder(iocSell, ++sequence);
+
+        assertEquals(CANCELLED, iocSell.getState());
+        assertEquals(5L, iocSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("FOK buy order with no liquidity gets cancelled")
+    void testFOKBuyWithNoLiquidity() {
+        Order fokBuy = getValidFOKBuyOrderWith(10L, 5L);
+        orderBook.addOrder(fokBuy, ++sequence);
+
+        assertEquals(CANCELLED, fokBuy.getState());
+        assertEquals(5L, fokBuy.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("FOK sell order with no liquidity gets cancelled")
+    void testFOKSellWithNoLiquidity() {
+        Order fokSell = getValidFOKSellOrderWith(10L, 5L);
+        orderBook.addOrder(fokSell, ++sequence);
+
+        assertEquals(CANCELLED, fokSell.getState());
+        assertEquals(5L, fokSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("FOK sell order cancels when insufficient liquidity")
+    void testFOKSellCancelsWhenInsufficient() {
+        // only 3 available at price 10
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 3L), ++sequence);
+
+        Order fokSell = getValidFOKSellOrderWith(10L, 5L);
+        orderBook.addOrder(fokSell, ++sequence);
+
+        assertEquals(CANCELLED, fokSell.getState());
+        assertEquals(5L, fokSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("FOK sell order fills fully when sufficient liquidity")
+    void testFOKSellFillsWhenSufficient() {
+        // 5 available at price 10
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 2L), ++sequence);
+        orderBook.addOrder(getValidLimitBuyOrderWith(10L, 3L), ++sequence);
+
+        Order fokSell = getValidFOKSellOrderWith(10L, 5L);
+        orderBook.addOrder(fokSell, ++sequence);
+
+        assertEquals(FILLED, fokSell.getState());
+        assertEquals(0L, fokSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("Multiple orders at same price level maintain FIFO order")
+    void testFIFOOrderingAtPriceLevel() {
+        Order buy1 = getValidLimitBuyOrderWith(10L, 2L);
+        Order buy2 = getValidLimitBuyOrderWith(10L, 3L);
+
+        orderBook.addOrder(buy1, ++sequence);
+        orderBook.addOrder(buy2, ++sequence);
+
+        Order sell = getValidLimitSellOrderWith(10L, 2L);
+        orderBook.addOrder(sell, ++sequence);
+
+        assertEquals(0L, buy1.getRemainingQuantity());
+        assertEquals(3L, buy2.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("Market order fills across multiple price levels")
+    void testMarketOrderAcrossMultiplePriceLevels() {
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(11L, 2L), ++sequence);
+        orderBook.addOrder(getValidLimitSellOrderWith(12L, 2L), ++sequence);
+
+        Order marketBuy = getValidMarketBuyOrderWith(5L);
+        orderBook.addOrder(marketBuy, ++sequence);
+
+        assertEquals(FILLED, marketBuy.getState());
+        assertEquals(0L, marketBuy.getRemainingQuantity());
+    }
 }
