@@ -10,7 +10,9 @@ public class TradeEvent implements EngineEvent {
     private final long sequence;
     private final String tradeId;
     private final String buyOrderId;
+    private final String buyClientOrderId;
     private final String sellOrderId;
+    private final String sellClientOrderId;
     private final long tradePrice;
     private final long quantity;
     private final long timestamp;
