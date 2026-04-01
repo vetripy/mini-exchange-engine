@@ -5,4 +5,12 @@ pluginManagement {
     }
 }
 
+dependencyResolutionManagement {
+    versionCatalogs {
+        libs {
+            from(files("libs.version.toml"))
+        }
+    }
+}
+
 rootProject.name = 'matching-engine'

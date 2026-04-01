@@ -16,6 +16,7 @@ import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
+import org.trading.exchange.listener.impl.LoggingOrderUpdateListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
 import org.trading.exchange.model.OrderState;
@@ -36,9 +37,11 @@ class MatchingEngineTest {
         tradeListener = new TestTradeListener();
         orderUpdateListener = new TestOrderUpdateListener();
         TestEngineStateListener testEngineStateListener = new TestEngineStateListener();
+        LoggingOrderUpdateListener loggingOrderUpdateListener = new LoggingOrderUpdateListener();
 
         engine.addTradeListener(tradeListener);
         engine.addOrderUpdateListener(orderUpdateListener);
+        engine.addOrderUpdateListener(loggingOrderUpdateListener);
         engine.addStateListener(testEngineStateListener);
         engine.start();
     }
@@ -93,9 +96,9 @@ class MatchingEngineTest {
         assertEquals(100L, tradeEvent.getTradePrice());
         assertEquals(5L, tradeEvent.getQuantity());
         assertEquals(((NewOrderCommand) buyCommand).getClientOrderId(),
-            tradeEvent.getBuyClientOrderId());
+                tradeEvent.getBuyClientOrderId());
         assertEquals(((NewOrderCommand) sellCommand).getClientOrderId(),
-            tradeEvent.getSellClientOrderId());
+                tradeEvent.getSellClientOrderId());
     }
 
     @Test
@@ -124,10 +127,10 @@ class MatchingEngineTest {
         assertEquals(4L, tradeEvent.getQuantity());
 
         OrderUpdateEvent lastUpdate =
-            orderUpdateListener.getUpdates().stream()
-                .filter(orderUpdate -> Objects.equals(orderUpdate.getClientOrderId(),
-                    ((NewOrderCommand) buyCommand).getClientOrderId()))
-                .toList().getLast();
+                orderUpdateListener.getUpdates().stream()
+                        .filter(orderUpdate -> Objects.equals(orderUpdate.getClientOrderId(),
+                                ((NewOrderCommand) buyCommand).getClientOrderId()))
+                        .toList().getLast();
 
         assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
         assertEquals(6L, lastUpdate.getRemainingQuantity());
@@ -141,7 +144,6 @@ class MatchingEngineTest {
         engine.submit(buyCommand);
         engine.submit(CancelOrderCommand.of(((NewOrderCommand) buyCommand).getClientOrderId()));
 
-        System.out.println(orderUpdateListener.getUpdates());
         OrderUpdateEvent last = orderUpdateListener.latest();
 
         assertEquals(OrderState.CANCELLED, last.getOrderState());
@@ -179,7 +181,7 @@ class MatchingEngineTest {
         assertEquals(2, tradeListener.getTrades().size());
 
         long totalQuantity =
-            tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
+                tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
 
         assertEquals(5L, totalQuantity);
     }
@@ -191,7 +193,7 @@ class MatchingEngineTest {
         engine.submit(buyCommand);
 
         assertThrows(IllegalArgumentException.class,
-            () -> engine.submit(CancelOrderCommand.of("unknown-client-id")));
+                () -> engine.submit(CancelOrderCommand.of("unknown-client-id")));
     }
 
     @Test

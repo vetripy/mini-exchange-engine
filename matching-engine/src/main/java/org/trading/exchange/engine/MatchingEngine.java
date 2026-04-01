@@ -8,6 +8,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
@@ -25,6 +26,7 @@ import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
 import org.trading.exchange.util.EnvelopeUtil;
 
+@Slf4j
 public class MatchingEngine {
 
     private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
@@ -140,7 +142,7 @@ public class MatchingEngine {
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
         Order order = buildOrderFromCommand(newOrderCommand, seq);
         clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
-        System.out.println("Processing new order: " + order + " with sequence: " + seq);
+        log.info("Processing new order: {} with sequence: {}", order, seq);
         OrderBook orderBook = books.get(order.getSymbol().name());
         List<EngineEvent> events = orderBook.addOrder(order, seq);
         events.forEach(this::handleOutbound);
@@ -157,7 +159,7 @@ public class MatchingEngine {
 
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String clientOrderId = cancelOrderCommand.getClientOrderId();
-        System.out.println("Processing cancel order: " + clientOrderId + " with sequence: " + seq);
+        log.info("Processing cancel order: {} with sequence: {}", clientOrderId, seq);
 
         String orderId = clientIdToOrderId.get(cancelOrderCommand.getClientOrderId());
         if (orderId == null) {

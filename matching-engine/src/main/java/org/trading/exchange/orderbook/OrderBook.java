@@ -7,12 +7,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import lombok.extern.slf4j.Slf4j;
 import org.trading.exchange.event.EngineEvent;
 import org.trading.exchange.event.OrderUpdateEvent;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.model.*;
 import org.trading.exchange.util.OrderBookUtil;
 
+@Slf4j
 public class OrderBook {
 
     private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
@@ -36,7 +38,7 @@ public class OrderBook {
         Order order = orderIndex.get(orderId);
 
         if (order == null) {
-            System.out.println("Order not found: " + orderId);
+            log.warn("Order not found: {}", orderId);
             throw new IllegalArgumentException("Order not found: " + orderId);
         }
 
@@ -55,7 +57,7 @@ public class OrderBook {
         order.setState(OrderState.CANCELLED);
         emitOrderUpdate(order, ctx);
         orderIndex.remove(orderId);
-        System.out.println("Cancelled order: " + orderId);
+        log.info("Order cancelled with orderId: {}", orderId);
         return ctx.getEvents();
     }
 
@@ -118,9 +120,9 @@ public class OrderBook {
             }
         }
         if (order.getRemainingQuantity() > 0) {
-            System.out.println("Market buy order partially filled, remaining quantity: "
-                    + order.getRemainingQuantity());
-            System.out.println("Cancelling remaining quantity");
+            log.info("Market buy order partially filled, remaining quantity: {}",
+                    order.getRemainingQuantity());
+            log.info("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
         }
@@ -140,9 +142,9 @@ public class OrderBook {
             }
         }
         if (order.getRemainingQuantity() > 0) {
-            System.out.println("Market sell order partially filled, remaining quantity: "
-                    + order.getRemainingQuantity());
-            System.out.println("Cancelling remaining quantity");
+            log.info("Market sell order partially filled, remaining quantity: {}",
+                    order.getRemainingQuantity());
+            log.info("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
         }
@@ -178,7 +180,7 @@ public class OrderBook {
         } else {
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
-            System.out.println("FOK order cancelled due to insufficient liquidity");
+            log.info("FOK order cancelled due to insufficient liquidity");
         }
     }
 
@@ -192,7 +194,7 @@ public class OrderBook {
         if (order.getRemainingQuantity() > 0) {
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
-            System.out.println("IOC remainder cancelled");
+            log.info("IOC order remainder cancelled");
         }
     }
 
