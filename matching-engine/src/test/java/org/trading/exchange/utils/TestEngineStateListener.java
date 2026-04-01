@@ -11,7 +11,7 @@ public class TestEngineStateListener implements EngineStateListener {
     public void onStateChange(EngineState oldState, EngineState newState, Throwable cause) {
         if (cause != null) {
             log.warn("Engine state changed from {} to {} due to: {}", oldState, newState,
-                cause.getMessage());
+                    cause.getMessage());
         } else {
             log.info("Engine state changed from {} to {}", oldState, newState);
         }

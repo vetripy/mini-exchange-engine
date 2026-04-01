@@ -10,6 +10,6 @@ public class LoggingOrderUpdateListener implements OrderUpdateListener {
     @Override
     public void onOrderUpdate(OrderUpdateEvent update) {
         log.info("ORDER UPDATE → {} {} remaining: {}", update.getOrderId(), update.getOrderState(),
-            update.getRemainingQuantity());
+                update.getRemainingQuantity());
     }
 }
