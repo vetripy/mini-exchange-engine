@@ -1,7 +1,6 @@
 package org.trading.exchange.model;
 
 import java.time.Instant;
-import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,11 +8,13 @@ import lombok.ToString;
 
 @Getter
 @ToString
-@Builder(access = AccessLevel.PRIVATE)
+@Builder
 public class Order {
 
     private final String orderId;
+    private final String clientOrderId;
     private final String userId;
+    private final Symbol symbol;
     private final OrderSide side;
     private final OrderType type;
     private final Long price;
@@ -29,7 +30,7 @@ public class Order {
     // can be removed or moved to a factory class if needed, used only for tests.
 
     public static Order createLimitOrder(String id, String userId, OrderSide side, Long price,
-            Long quantity) {
+        Long quantity) {
         if (price == null || price <= 0) {
             throw new IllegalArgumentException("Price must be a positive value for limit orders");
         }
@@ -37,7 +38,7 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.LIMIT)
-                .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
+            .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
     }
 
     public static Order createMarketOrder(String id, String userId, OrderSide side, Long quantity) {
@@ -45,11 +46,11 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.MARKET)
-                .price(null).remainingQuantity(quantity).timestamp(Instant.now()).build();
+            .price(null).remainingQuantity(quantity).timestamp(Instant.now()).build();
     }
 
     public static Order createIOCOrder(String id, String userId, OrderSide side, Long price,
-            Long quantity) {
+        Long quantity) {
         if (price == null || price <= 0) {
             throw new IllegalArgumentException("Price must be a positive value for IOC orders");
         }
@@ -57,11 +58,11 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.IOC)
-                .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
+            .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
     }
 
     public static Order createFOKOrder(String id, String userId, OrderSide side, Long price,
-            Long quantity) {
+        Long quantity) {
         if (price == null || price <= 0) {
             throw new IllegalArgumentException("Price must be a positive value for FOK orders");
         }
@@ -69,7 +70,7 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.FOK)
-                .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
+            .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
     }
 
     public void reduceQuantity(long quantity) {
