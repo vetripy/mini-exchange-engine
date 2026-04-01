@@ -2,7 +2,6 @@ package org.trading.exchange.engine.command;
 
 import lombok.Builder;
 import lombok.Getter;
-import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderSide;
 import org.trading.exchange.model.OrderType;
 

@@ -247,8 +247,9 @@ public class OrderBook {
     private void emitOrderUpdate(Order order, MatchContext ctx) {
         OrderUpdateEvent update = OrderUpdateEvent.builder().sequence(ctx.getSequence())
                 .orderId(order.getOrderId()).clientOrderId(order.getClientOrderId())
-                .orderState(order.getState()).remainingQuantity(order.getRemainingQuantity())
-                .timestamp(System.nanoTime()).build();
+                .symbol(order.getSymbol()).orderState(order.getState())
+                .remainingQuantity(order.getRemainingQuantity()).timestamp(System.nanoTime())
+                .build();
 
         ctx.emit(update);
     }
@@ -257,8 +258,9 @@ public class OrderBook {
             MatchContext ctx) {
         TradeEvent tradeEvent = TradeEvent.builder().sequence(ctx.getSequence())
                 .buyOrderId(buyOrder.getOrderId()).buyClientOrderId(buyOrder.getClientOrderId())
-                .sellOrderId(sellOrder.getOrderId()).sellClientOrderId(sellOrder.getClientOrderId())
-                .tradePrice(price).quantity(quantity).timestamp(System.currentTimeMillis()).build();
+                .symbol(buyOrder.getSymbol()).sellOrderId(sellOrder.getOrderId())
+                .sellClientOrderId(sellOrder.getClientOrderId()).tradePrice(price)
+                .quantity(quantity).timestamp(System.currentTimeMillis()).build();
 
         ctx.emit(tradeEvent);
     }
