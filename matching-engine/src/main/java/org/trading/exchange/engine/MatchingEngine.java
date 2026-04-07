@@ -95,8 +95,8 @@ public class MatchingEngine {
     private void engineLoop() {
         while (this.state == EngineState.RUNNING) {
             try {
-                Envelope<EngineCommand> event = inboundEvents.take();
-                process(event);
+                Envelope<EngineCommand> envelope = inboundEvents.take();
+                process(envelope);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
