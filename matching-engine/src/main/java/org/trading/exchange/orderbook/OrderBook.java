@@ -23,6 +23,7 @@ public class OrderBook {
 
     public List<EngineEvent> addOrder(Order order, long seq) {
         MatchContext ctx = new MatchContext(seq);
+        order.setState(OrderState.PENDING);
         emitOrderUpdate(order, ctx);
         switch (order.getType()) {
             case MARKET -> handleMarket(order, ctx);
@@ -260,7 +261,7 @@ public class OrderBook {
             .buyOrderId(buyOrder.getOrderId()).buyClientOrderId(buyOrder.getClientOrderId())
             .symbol(buyOrder.getSymbol()).sellOrderId(sellOrder.getOrderId())
             .sellClientOrderId(sellOrder.getClientOrderId()).tradePrice(price)
-            .quantity(quantity).timestamp(System.currentTimeMillis()).build();
+            .quantity(quantity).timestamp(System.nanoTime()).build();
 
         ctx.emit(tradeEvent);
     }
