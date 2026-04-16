@@ -1,0 +1,34 @@
+@startuml Cancel Order Processing
+
+title Cancel Order Processing
+
+actor Client
+participant MatchingEngine
+participant Sequencer
+participant OrderBooke
+participant TradeListener
+participant OrderUpdateListener
+
+Client -> MatchingEngine: submit(CancelOrderCommand)
+activate MatchingEngine
+
+MatchingEngine -> Sequencer: getNextSequence()
+activate Sequencer
+Sequencer --> MatchingEngine: sequence number
+deactivate Sequencer
+
+MatchingEngine -> MatchingEngine: parse orderId from clientOrderId
+MatchingEngine -> OrderBook: cancelOrder(orderId, seq)
+activate OrderBook
+
+OrderBook -> OrderBook: remove from book
+OrderBook -> OrderBook: set state to CANCELLED
+OrderBook -> OrderBook: emit OrderUpdateEvent
+OrderBook --> MatchingEngine: events
+deactivate OrderBook
+
+MatchingEngine -> OrderUpdateListener: onOrderUpdate(cancel event)
+
+deactivate MatchingEngine
+
+@enduml

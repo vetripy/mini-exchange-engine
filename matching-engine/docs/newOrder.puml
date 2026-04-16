@@ -1,0 +1,59 @@
+@startuml New Order Processing
+
+title New Order Processing
+
+actor Client
+participant MatchingEngine
+participant Sequencer
+participant OrderBooke
+participant TradeListener
+participant OrderUpdateListener
+
+Client -> MatchingEngine: submit(NewOrderCommand)
+activate MatchingEngine
+
+MatchingEngine -> Sequencer: getNextSequence()
+activate Sequencer
+Sequencer --> MatchingEngine: sequence number
+deactivate Sequencer
+
+MatchingEngine -> MatchingEngine: buildOrderFromCommand(cmd, seq)
+MatchingEngine -> MatchingEngine: check for duplicate clientOrderId
+
+MatchingEngine -> OrderBook: addOrder(order, seq)
+activate OrderBook
+
+OrderBook -> OrderBook: set order state to PENDING
+OrderBook -> OrderBook: emit OrderUpdateEvent
+
+alt Market Order
+    OrderBook -> OrderBook: handleMarket(order, ctx)
+    OrderBook -> OrderBook: matchMarketBuy/Sell(order, ctx)
+    loop while sellOrders/buyOrders not empty and quantity > 0
+        OrderBook -> OrderBook: executeTrade(restingOrder, matchingOrder, ctx)
+        OrderBook -> OrderBook: emit OrderUpdateEvent for both
+        OrderBook -> OrderBook: emit TradeEvent
+    end
+    OrderBook -> OrderBook: cancel remaining if any
+else Limit Order
+    OrderBook -> OrderBook: handleLimit(order, ctx)
+    OrderBook -> OrderBook: matchBuy/Sell(order, ctx)
+    loop while opposite side has matching prices
+        OrderBook -> OrderBook: executeTrade(...)
+    end
+    OrderBook -> OrderBook: addToBook if remaining > 0
+end
+
+OrderBook --> MatchingEngine: List<EngineEvent>
+deactivate OrderBook
+
+MatchingEngine -> MatchingEngine: handleOutbound(events)
+loop for each event
+    alt TradeEvent
+        MatchingEngine -> TradeListener: onTrade(event)
+    else OrderUpdateEvent
+        MatchingEngine -> OrderUpdateListener: onOrderUpdate(event)
+    end
+end
+
+@enduml
