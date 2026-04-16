@@ -47,7 +47,7 @@ public class OrderBook {
         }
 
         TreeMap<Long, Deque<Order>> book =
-                order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
+            order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         Deque<Order> queue = book.get(order.getPrice());
 
         if (queue != null) {
@@ -68,10 +68,9 @@ public class OrderBook {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order sellOrder = queue.peek();
 
-            if (order.getPrice() < sellOrder.getPrice()) {
+            if (!(order.getPrice() >= sellOrder.getPrice())) {
                 break;
             }
-
             executeTrade(sellOrder, order, ctx);
             if (sellOrder.getRemainingQuantity() == 0) {
                 queue.poll();
@@ -80,6 +79,7 @@ public class OrderBook {
                     sellOrders.pollFirstEntry();
                 }
             }
+
         }
         if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
             addToBook(buyOrders, order);
@@ -91,9 +91,10 @@ public class OrderBook {
             Deque<Order> queue = buyOrders.firstEntry().getValue();
             Order buyOrder = queue.peek();
 
-            if (order.getPrice() > buyOrder.getPrice()) {
+            if (!(order.getPrice() <= buyOrder.getPrice())) {
                 break;
             }
+
             executeTrade(buyOrder, order, ctx);
             if (buyOrder.getRemainingQuantity() == 0) {
                 queue.poll();
@@ -102,6 +103,7 @@ public class OrderBook {
                     buyOrders.pollFirstEntry();
                 }
             }
+
         }
         if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
             addToBook(sellOrders, order);
@@ -123,7 +125,7 @@ public class OrderBook {
         }
         if (order.getRemainingQuantity() > 0) {
             log.info("Market buy order partially filled, remaining quantity: {}",
-                    order.getRemainingQuantity());
+                order.getRemainingQuantity());
             log.info("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
@@ -145,7 +147,7 @@ public class OrderBook {
         }
         if (order.getRemainingQuantity() > 0) {
             log.info("Market sell order partially filled, remaining quantity: {}",
-                    order.getRemainingQuantity());
+                order.getRemainingQuantity());
             log.info("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
@@ -170,8 +172,8 @@ public class OrderBook {
 
     private void handleFOK(Order order, MatchContext ctx) {
         boolean canFill = order.getSide() == OrderSide.BUY
-                ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
-                : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
+            ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
+            : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
@@ -207,7 +209,7 @@ public class OrderBook {
 
     private void executeTrade(Order restingOrder, Order matchingOrder, MatchContext ctx) {
         long tradeQuantity =
-                Math.min(restingOrder.getRemainingQuantity(), matchingOrder.getRemainingQuantity());
+            Math.min(restingOrder.getRemainingQuantity(), matchingOrder.getRemainingQuantity());
         restingOrder.reduceQuantity(tradeQuantity);
         matchingOrder.reduceQuantity(tradeQuantity);
         Long tradePrice = restingOrder.getPrice();
@@ -250,26 +252,26 @@ public class OrderBook {
 
     private void emitOrderUpdate(Order order, MatchContext ctx) {
         OrderUpdateEvent update = OrderUpdateEvent.builder().sequence(ctx.getSequence())
-                .orderId(order.getOrderId()).clientOrderId(order.getClientOrderId())
-                .symbol(order.getSymbol()).orderState(order.getState())
-                .remainingQuantity(order.getRemainingQuantity()).timestamp(order.getTimestamp())
-                .build();
+            .orderId(order.getOrderId()).clientOrderId(order.getClientOrderId())
+            .symbol(order.getSymbol()).orderState(order.getState())
+            .remainingQuantity(order.getRemainingQuantity()).timestamp(order.getTimestamp())
+            .build();
 
         ctx.emit(update);
     }
 
     private void emitTrade(Order restingOrder, Order matchingOrder, Long price, Long quantity,
-            MatchContext ctx) {
+        MatchContext ctx) {
         String buyOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         String sellOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.SELL);
         String buyClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         String sellClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.SELL);
 
         TradeEvent tradeEvent = TradeEvent.builder().sequence(ctx.getSequence())
-                .buyOrderId(buyOrderId).buyClientOrderId(buyClientOrderId)
-                .symbol(restingOrder.getSymbol()).sellOrderId(sellOrderId)
-                .sellClientOrderId(sellClientOrderId).tradePrice(price).quantity(quantity)
-                .timestamp(matchingOrder.getTimestamp()).build();
+            .buyOrderId(buyOrderId).buyClientOrderId(buyClientOrderId)
+            .symbol(restingOrder.getSymbol()).sellOrderId(sellOrderId)
+            .sellClientOrderId(sellClientOrderId).tradePrice(price).quantity(quantity)
+            .timestamp(matchingOrder.getTimestamp()).build();
         ctx.emit(tradeEvent);
     }
 
