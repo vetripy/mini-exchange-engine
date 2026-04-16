@@ -1,6 +1,5 @@
 package org.trading.exchange.model;
 
-import java.time.Instant;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -18,8 +17,7 @@ public class Order {
     private final OrderSide side;
     private final OrderType type;
     private final Long price;
-    @Builder.Default
-    private final Instant timestamp = Instant.now();
+    private final long timestamp;
     @Builder.Default
     private Long remainingQuantity = 0L;
     @Builder.Default
@@ -38,7 +36,8 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.LIMIT)
-                .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
+                .price(price).remainingQuantity(quantity).timestamp(System.currentTimeMillis())
+                .build();
     }
 
     public static Order createMarketOrder(String id, String userId, OrderSide side, Long quantity) {
@@ -46,7 +45,8 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.MARKET)
-                .price(null).remainingQuantity(quantity).timestamp(Instant.now()).build();
+                .price(null).remainingQuantity(quantity).timestamp(System.currentTimeMillis())
+                .build();
     }
 
     public static Order createIOCOrder(String id, String userId, OrderSide side, Long price,
@@ -58,7 +58,8 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.IOC)
-                .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
+                .price(price).remainingQuantity(quantity).timestamp(System.currentTimeMillis())
+                .build();
     }
 
     public static Order createFOKOrder(String id, String userId, OrderSide side, Long price,
@@ -70,7 +71,8 @@ public class Order {
             throw new IllegalArgumentException("Quantity must be a positive value");
         }
         return Order.builder().orderId(id).userId(userId).side(side).type(OrderType.FOK)
-                .price(price).remainingQuantity(quantity).timestamp(Instant.now()).build();
+                .price(price).remainingQuantity(quantity).timestamp(System.currentTimeMillis())
+                .build();
     }
 
     public void reduceQuantity(long quantity) {

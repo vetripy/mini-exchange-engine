@@ -3,6 +3,7 @@ package org.trading.exchange.util;
 import java.util.List;
 import java.util.Map;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.model.OrderSide;
 
 public final class OrderBookUtil {
 
@@ -36,4 +37,15 @@ public final class OrderBookUtil {
 
         System.out.println("\n============================================\n");
     }
+
+    public static String getOrderId(Order restingOrder, Order matchingOrder, OrderSide side) {
+        return side == restingOrder.getSide() ? restingOrder.getOrderId()
+                : matchingOrder.getOrderId();
+    }
+
+    public static String getClientOrderId(Order restingOrder, Order matchingOrder, OrderSide side) {
+        return side == restingOrder.getSide() ? restingOrder.getClientOrderId()
+                : matchingOrder.getClientOrderId();
+    }
+
 }
