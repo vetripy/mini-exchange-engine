@@ -136,14 +136,9 @@ public class MatchingEngine {
     }
 
     private void process(Envelope<EngineCommand> event) {
-        EngineCommand command = EnvelopeUtil.unwrap(event);
-        long seq = event.sequence();
+        EngineCommand command=EnvelopeUtil.unwrap(event);long seq=event.sequence();
 
-        switch (command) {
-            case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
-            case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
-            default -> throw new IllegalStateException("Unsupported engine command: " + command);
-        }
+        switch(command){case NewOrderCommand cmd->handleNewOrder(cmd,seq);case CancelOrderCommand cmd->handleCancelOrder(cmd,seq);default->throw new IllegalStateException("Unsupported engine command: "+command);}
     }
 
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
@@ -165,9 +160,9 @@ public class MatchingEngine {
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
         String orderId = cmd.getSymbol() + "-" + seq;
         return Order.builder().orderId(orderId).clientOrderId(cmd.getClientOrderId())
-            .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol())).side(cmd.getSide())
-            .type(cmd.getType()).price(cmd.getPrice()).remainingQuantity(cmd.getQuantity())
-            .build();
+                .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol())).side(cmd.getSide())
+                .type(cmd.getType()).price(cmd.getPrice()).remainingQuantity(cmd.getQuantity())
+                .build();
 
     }
 
