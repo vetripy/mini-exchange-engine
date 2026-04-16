@@ -126,9 +126,8 @@ public class OrderBook {
             }
         }
         if (order.getRemainingQuantity() > 0) {
-            log.info("Market buy order partially filled, remaining quantity: {}",
+            log.info("Market buy order not fully filled, cancelling remaining quantity: {}",
                 order.getRemainingQuantity());
-            log.info("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
         }
@@ -148,9 +147,8 @@ public class OrderBook {
             }
         }
         if (order.getRemainingQuantity() > 0) {
-            log.info("Market sell order partially filled, remaining quantity: {}",
+            log.info("Market sell order not fully filled, cancelling remaining quantity: {}",
                 order.getRemainingQuantity());
-            log.info("Cancelling remaining quantity");
             order.setState(OrderState.CANCELLED);
             emitOrderUpdate(order, ctx);
         }
