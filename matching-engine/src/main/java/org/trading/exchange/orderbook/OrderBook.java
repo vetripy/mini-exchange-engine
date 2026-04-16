@@ -1,5 +1,8 @@
 package org.trading.exchange.orderbook;
 
+import static org.trading.exchange.util.OrderBookUtil.getClientOrderId;
+import static org.trading.exchange.util.OrderBookUtil.getOrderId;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
@@ -23,6 +26,7 @@ public class OrderBook {
 
     public List<EngineEvent> addOrder(Order order, long seq) {
         MatchContext ctx = new MatchContext(seq);
+        order.setState(OrderState.PENDING);
         emitOrderUpdate(order, ctx);
         switch (order.getType()) {
             case MARKET -> handleMarket(order, ctx);
@@ -41,8 +45,6 @@ public class OrderBook {
             log.warn("Order not found: {}", orderId);
             throw new IllegalArgumentException("Order not found: " + orderId);
         }
-
-        emitOrderUpdate(order, ctx);
 
         TreeMap<Long, Deque<Order>> book =
                 order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
@@ -66,11 +68,10 @@ public class OrderBook {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order sellOrder = queue.peek();
 
-            if (order.getPrice() < sellOrder.getPrice()) {
+            if (!(order.getPrice() >= sellOrder.getPrice())) {
                 break;
             }
-
-            executeTrade(order, sellOrder, ctx);
+            executeTrade(sellOrder, order, ctx);
             if (sellOrder.getRemainingQuantity() == 0) {
                 queue.poll();
                 orderIndex.remove(sellOrder.getOrderId());
@@ -78,6 +79,7 @@ public class OrderBook {
                     sellOrders.pollFirstEntry();
                 }
             }
+
         }
         if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
             addToBook(buyOrders, order);
@@ -89,9 +91,10 @@ public class OrderBook {
             Deque<Order> queue = buyOrders.firstEntry().getValue();
             Order buyOrder = queue.peek();
 
-            if (order.getPrice() > buyOrder.getPrice()) {
+            if (!(order.getPrice() <= buyOrder.getPrice())) {
                 break;
             }
+
             executeTrade(buyOrder, order, ctx);
             if (buyOrder.getRemainingQuantity() == 0) {
                 queue.poll();
@@ -100,6 +103,7 @@ public class OrderBook {
                     buyOrders.pollFirstEntry();
                 }
             }
+
         }
         if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
             addToBook(sellOrders, order);
@@ -110,7 +114,7 @@ public class OrderBook {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order bestSell = queue.peek();
-            executeTrade(order, bestSell, ctx);
+            executeTrade(bestSell, order, ctx);
             if (bestSell.getRemainingQuantity() == 0) {
                 queue.poll();
                 orderIndex.remove(bestSell.getOrderId());
@@ -203,15 +207,15 @@ public class OrderBook {
         orderIndex.put(order.getOrderId(), order);
     }
 
-    private void executeTrade(Order buyOrder, Order sellOrder, MatchContext ctx) {
+    private void executeTrade(Order restingOrder, Order matchingOrder, MatchContext ctx) {
         long tradeQuantity =
-                Math.min(buyOrder.getRemainingQuantity(), sellOrder.getRemainingQuantity());
-        buyOrder.reduceQuantity(tradeQuantity);
-        sellOrder.reduceQuantity(tradeQuantity);
-        Long tradePrice = sellOrder.getPrice() == null ? buyOrder.getPrice() : sellOrder.getPrice();
-        emitOrderUpdate(buyOrder, ctx);
-        emitOrderUpdate(sellOrder, ctx);
-        emitTrade(buyOrder, sellOrder, tradePrice, tradeQuantity, ctx);
+                Math.min(restingOrder.getRemainingQuantity(), matchingOrder.getRemainingQuantity());
+        restingOrder.reduceQuantity(tradeQuantity);
+        matchingOrder.reduceQuantity(tradeQuantity);
+        Long tradePrice = restingOrder.getPrice();
+        emitOrderUpdate(restingOrder, ctx);
+        emitOrderUpdate(matchingOrder, ctx);
+        emitTrade(restingOrder, matchingOrder, tradePrice, tradeQuantity, ctx);
     }
 
     private long availableSellLiquidity(Long priceLimit) {
@@ -250,20 +254,24 @@ public class OrderBook {
         OrderUpdateEvent update = OrderUpdateEvent.builder().sequence(ctx.getSequence())
                 .orderId(order.getOrderId()).clientOrderId(order.getClientOrderId())
                 .symbol(order.getSymbol()).orderState(order.getState())
-                .remainingQuantity(order.getRemainingQuantity()).timestamp(System.nanoTime())
+                .remainingQuantity(order.getRemainingQuantity()).timestamp(order.getTimestamp())
                 .build();
 
         ctx.emit(update);
     }
 
-    private void emitTrade(Order buyOrder, Order sellOrder, Long price, Long quantity,
+    private void emitTrade(Order restingOrder, Order matchingOrder, Long price, Long quantity,
             MatchContext ctx) {
-        TradeEvent tradeEvent = TradeEvent.builder().sequence(ctx.getSequence())
-                .buyOrderId(buyOrder.getOrderId()).buyClientOrderId(buyOrder.getClientOrderId())
-                .symbol(buyOrder.getSymbol()).sellOrderId(sellOrder.getOrderId())
-                .sellClientOrderId(sellOrder.getClientOrderId()).tradePrice(price)
-                .quantity(quantity).timestamp(System.currentTimeMillis()).build();
+        String buyOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.BUY);
+        String sellOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.SELL);
+        String buyClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.BUY);
+        String sellClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.SELL);
 
+        TradeEvent tradeEvent = TradeEvent.builder().sequence(ctx.getSequence())
+                .buyOrderId(buyOrderId).buyClientOrderId(buyClientOrderId)
+                .symbol(restingOrder.getSymbol()).sellOrderId(sellOrderId)
+                .sellClientOrderId(sellClientOrderId).tradePrice(price).quantity(quantity)
+                .timestamp(matchingOrder.getTimestamp()).build();
         ctx.emit(tradeEvent);
     }
 

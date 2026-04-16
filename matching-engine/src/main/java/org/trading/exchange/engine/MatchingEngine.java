@@ -25,6 +25,7 @@ import org.trading.exchange.model.Symbol;
 import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
 import org.trading.exchange.util.EnvelopeUtil;
+import org.trading.exchange.validators.OrderValidator;
 
 @Slf4j
 public class MatchingEngine {
@@ -34,6 +35,7 @@ public class MatchingEngine {
     private final Sequencer sequencer;
     private final Map<String, String> clientIdToOrderId = new HashMap<>();
     private final Map<String, OrderBook> books = new HashMap<>();
+    private final OrderValidator orderValidator = new OrderValidator();
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
@@ -95,8 +97,8 @@ public class MatchingEngine {
     private void engineLoop() {
         while (this.state == EngineState.RUNNING) {
             try {
-                Envelope<EngineCommand> event = inboundEvents.take();
-                process(event);
+                Envelope<EngineCommand> envelope = inboundEvents.take();
+                process(envelope);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -141,6 +143,13 @@ public class MatchingEngine {
 
     private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
         Order order = buildOrderFromCommand(newOrderCommand, seq);
+
+        orderValidator.validateInvariants(order);
+
+        // thread safe since orders are only added in the engine thread (single threaded)
+        if (clientIdToOrderId.containsKey(order.getClientOrderId())) {
+            throw new IllegalArgumentException("Duplicate clientOrderId");
+        }
         clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
         log.info("Processing new order: {} with sequence: {}", order, seq);
         OrderBook orderBook = books.get(order.getSymbol().name());

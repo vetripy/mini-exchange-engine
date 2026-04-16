@@ -16,11 +16,12 @@ public class NewOrderCommand implements EngineCommand {
     private final String userId;
     private final Long price;
     private final Long quantity;
-
+    private final long timestamp;
 
     public static NewOrderCommand of(String clientOrderId, String symbol, OrderSide side,
-            OrderType type, String userId, Long price, Long quantity) {
+            OrderType type, String userId, Long price, Long quantity, long timestamp) {
         return NewOrderCommand.builder().clientOrderId(clientOrderId).symbol(symbol).side(side)
-                .type(type).price(price).userId(userId).quantity(quantity).build();
+                .type(type).price(price).userId(userId).quantity(quantity).timestamp(timestamp)
+                .build();
     }
 }
