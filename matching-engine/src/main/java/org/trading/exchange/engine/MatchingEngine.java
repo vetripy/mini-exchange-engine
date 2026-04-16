@@ -150,7 +150,7 @@ public class MatchingEngine {
         Order order = buildOrderFromCommand(newOrderCommand, seq);
 
         orderValidator.validateInvariants(order);
-        
+
         // thread safe since orders are only added in the engine thread (single threaded)
         if (clientIdToOrderId.containsKey(order.getClientOrderId())) {
             throw new IllegalArgumentException("Duplicate clientOrderId");
