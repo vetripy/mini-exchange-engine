@@ -63,7 +63,21 @@ public class OrderBook {
         return ctx.getEvents();
     }
 
-    private void matchBuy(Order order, MatchContext ctx) {
+    private void matchLimitBuy(Order order, MatchContext ctx) {
+        matchBuyWithoutResting(order, ctx);
+        if (order.getRemainingQuantity() > 0) {
+            addToBook(buyOrders, order);
+        }
+    }
+
+    private void matchLimitSell(Order order, MatchContext ctx) {
+        matchSellWithoutResting(order, ctx);
+        if (order.getRemainingQuantity() > 0) {
+            addToBook(sellOrders, order);
+        }
+    }
+
+    private void matchBuyWithoutResting(Order order, MatchContext ctx) {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order sellOrder = queue.peek();
@@ -81,14 +95,9 @@ public class OrderBook {
             }
 
         }
-        // IOC/FOK will never satisfy the LIMIT type check
-        // needs to be revisited if IOC/FOK is move to time in force instead of OrderType
-        if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
-            addToBook(buyOrders, order);
-        }
     }
 
-    private void matchSell(Order order, MatchContext ctx) {
+    private void matchSellWithoutResting(Order order, MatchContext ctx) {
         while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = buyOrders.firstEntry().getValue();
             Order buyOrder = queue.peek();
@@ -105,10 +114,6 @@ public class OrderBook {
                     buyOrders.pollFirstEntry();
                 }
             }
-
-        }
-        if (order.getRemainingQuantity() > 0 && order.getType() == OrderType.LIMIT) {
-            addToBook(sellOrders, order);
         }
     }
 
@@ -164,9 +169,9 @@ public class OrderBook {
 
     private void handleLimit(Order order, MatchContext ctx) {
         if (order.getSide() == OrderSide.BUY) {
-            matchBuy(order, ctx);
+            matchLimitBuy(order, ctx);
         } else {
-            matchSell(order, ctx);
+            matchLimitSell(order, ctx);
         }
     }
 
@@ -177,9 +182,9 @@ public class OrderBook {
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
-                matchBuy(order, ctx);
+                matchBuyWithoutResting(order, ctx);
             } else {
-                matchSell(order, ctx);
+                matchSellWithoutResting(order, ctx);
             }
         } else {
             order.setState(OrderState.CANCELLED);
@@ -190,9 +195,9 @@ public class OrderBook {
 
     private void handleIOC(Order order, MatchContext ctx) {
         if (order.getSide() == OrderSide.BUY) {
-            matchBuy(order, ctx);
+            matchBuyWithoutResting(order, ctx);
         } else {
-            matchSell(order, ctx);
+            matchSellWithoutResting(order, ctx);
         }
 
         if (order.getRemainingQuantity() > 0) {
