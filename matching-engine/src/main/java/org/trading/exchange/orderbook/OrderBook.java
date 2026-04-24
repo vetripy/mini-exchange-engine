@@ -64,25 +64,45 @@ public class OrderBook {
     }
 
     private void matchLimitBuy(Order order, MatchContext ctx) {
-        matchBuyWithoutResting(order, ctx);
+        matchBuyWithoutResting(order, ctx, true);
         if (order.getRemainingQuantity() > 0) {
             addToBook(buyOrders, order);
         }
     }
 
     private void matchLimitSell(Order order, MatchContext ctx) {
-        matchSellWithoutResting(order, ctx);
+        matchSellWithoutResting(order, ctx, true);
         if (order.getRemainingQuantity() > 0) {
             addToBook(sellOrders, order);
         }
     }
 
-    private void matchBuyWithoutResting(Order order, MatchContext ctx) {
+    private void matchMarketBuy(Order order, MatchContext ctx) {
+        matchBuyWithoutResting(order, ctx, false);
+        if (order.getRemainingQuantity() > 0) {
+            log.info("Market buy order not fully filled, cancelling remaining quantity: {}",
+                order.getRemainingQuantity());
+            order.setState(OrderState.CANCELLED);
+            emitOrderUpdate(order, ctx);
+        }
+    }
+
+    private void matchMarketSell(Order order, MatchContext ctx) {
+        matchSellWithoutResting(order, ctx, false);
+        if (order.getRemainingQuantity() > 0) {
+            log.info("Market sell order not fully filled, cancelling remaining quantity: {}",
+                order.getRemainingQuantity());
+            order.setState(OrderState.CANCELLED);
+            emitOrderUpdate(order, ctx);
+        }
+    }
+
+    private void matchBuyWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = sellOrders.firstEntry().getValue();
             Order sellOrder = queue.peek();
 
-            if (!(order.getPrice() >= sellOrder.getPrice())) {
+            if (checkPrice && (!(order.getPrice() >= sellOrder.getPrice()))) {
                 break;
             }
             executeTrade(sellOrder, order, ctx);
@@ -97,12 +117,12 @@ public class OrderBook {
         }
     }
 
-    private void matchSellWithoutResting(Order order, MatchContext ctx) {
+    private void matchSellWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
             Deque<Order> queue = buyOrders.firstEntry().getValue();
             Order buyOrder = queue.peek();
 
-            if (!(order.getPrice() <= buyOrder.getPrice())) {
+            if (checkPrice && (!(order.getPrice() <= buyOrder.getPrice()))) {
                 break;
             }
 
@@ -114,48 +134,6 @@ public class OrderBook {
                     buyOrders.pollFirstEntry();
                 }
             }
-        }
-    }
-
-    private void matchMarketBuy(Order order, MatchContext ctx) {
-        while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Deque<Order> queue = sellOrders.firstEntry().getValue();
-            Order bestSell = queue.peek();
-            executeTrade(bestSell, order, ctx);
-            if (bestSell.getRemainingQuantity() == 0) {
-                queue.poll();
-                orderIndex.remove(bestSell.getOrderId());
-                if (queue.isEmpty()) {
-                    sellOrders.pollFirstEntry();
-                }
-            }
-        }
-        if (order.getRemainingQuantity() > 0) {
-            log.info("Market buy order not fully filled, cancelling remaining quantity: {}",
-                order.getRemainingQuantity());
-            order.setState(OrderState.CANCELLED);
-            emitOrderUpdate(order, ctx);
-        }
-    }
-
-    private void matchMarketSell(Order order, MatchContext ctx) {
-        while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Deque<Order> queue = buyOrders.firstEntry().getValue();
-            Order bestBuy = queue.peek();
-            executeTrade(bestBuy, order, ctx);
-            if (bestBuy.getRemainingQuantity() == 0) {
-                queue.poll();
-                orderIndex.remove(bestBuy.getOrderId());
-                if (queue.isEmpty()) {
-                    buyOrders.pollFirstEntry();
-                }
-            }
-        }
-        if (order.getRemainingQuantity() > 0) {
-            log.info("Market sell order not fully filled, cancelling remaining quantity: {}",
-                order.getRemainingQuantity());
-            order.setState(OrderState.CANCELLED);
-            emitOrderUpdate(order, ctx);
         }
     }
 
@@ -182,9 +160,9 @@ public class OrderBook {
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
-                matchBuyWithoutResting(order, ctx);
+                matchBuyWithoutResting(order, ctx, true);
             } else {
-                matchSellWithoutResting(order, ctx);
+                matchSellWithoutResting(order, ctx, true);
             }
         } else {
             order.setState(OrderState.CANCELLED);
@@ -195,9 +173,9 @@ public class OrderBook {
 
     private void handleIOC(Order order, MatchContext ctx) {
         if (order.getSide() == OrderSide.BUY) {
-            matchBuyWithoutResting(order, ctx);
+            matchBuyWithoutResting(order, ctx, true);
         } else {
-            matchSellWithoutResting(order, ctx);
+            matchSellWithoutResting(order, ctx, true);
         }
 
         if (order.getRemainingQuantity() > 0) {
