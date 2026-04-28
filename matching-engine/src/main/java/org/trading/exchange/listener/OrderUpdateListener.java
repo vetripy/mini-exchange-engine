@@ -4,5 +4,5 @@ import org.trading.exchange.event.OrderUpdateEvent;
 
 public interface OrderUpdateListener {
 
-  void onOrderUpdate(OrderUpdateEvent orderUpdateEvent);
+    void onOrderUpdate(OrderUpdateEvent orderUpdateEvent);
 }

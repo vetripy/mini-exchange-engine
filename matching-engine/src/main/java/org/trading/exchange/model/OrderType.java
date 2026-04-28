@@ -1,5 +1,5 @@
 package org.trading.exchange.model;
 
 public enum OrderType {
-  LIMIT, MARKET, IOC, FOK
+    LIMIT, MARKET, IOC, FOK
 }

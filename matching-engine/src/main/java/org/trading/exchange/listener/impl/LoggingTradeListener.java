@@ -7,8 +7,8 @@ import org.trading.exchange.listener.TradeListener;
 @Slf4j
 public class LoggingTradeListener implements TradeListener {
 
-  @Override
-  public void onTrade(TradeEvent tradeEvent) {
-    log.info("TRADE EXECUTED → {} @ {}", tradeEvent.getQuantity(), tradeEvent.getTradePrice());
-  }
+    @Override
+    public void onTrade(TradeEvent tradeEvent) {
+        log.info("TRADE EXECUTED → {} @ {}", tradeEvent.getQuantity(), tradeEvent.getTradePrice());
+    }
 }

@@ -9,18 +9,19 @@ import org.trading.exchange.model.OrderType;
 @Builder
 public class NewOrderCommand implements EngineCommand {
 
-  private final String clientOrderId;
-  private final String symbol;
-  private final OrderSide side;
-  private final OrderType type;
-  private final String userId;
-  private final Long price;
-  private final Long quantity;
-  private final long timestamp;
+    private final String clientOrderId;
+    private final String symbol;
+    private final OrderSide side;
+    private final OrderType type;
+    private final String userId;
+    private final Long price;
+    private final Long quantity;
+    private final long timestamp;
 
-  public static NewOrderCommand of(String clientOrderId, String symbol, OrderSide side,
-          OrderType type, String userId, Long price, Long quantity, long timestamp) {
-    return NewOrderCommand.builder().clientOrderId(clientOrderId).symbol(symbol).side(side)
-            .type(type).price(price).userId(userId).quantity(quantity).timestamp(timestamp).build();
-  }
+    public static NewOrderCommand of(String clientOrderId, String symbol, OrderSide side,
+                    OrderType type, String userId, Long price, Long quantity, long timestamp) {
+        return NewOrderCommand.builder().clientOrderId(clientOrderId).symbol(symbol).side(side)
+                        .type(type).price(price).userId(userId).quantity(quantity)
+                        .timestamp(timestamp).build();
+    }
 }
