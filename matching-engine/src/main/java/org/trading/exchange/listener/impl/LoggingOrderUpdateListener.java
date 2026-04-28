@@ -7,9 +7,9 @@ import org.trading.exchange.listener.OrderUpdateListener;
 @Slf4j
 public class LoggingOrderUpdateListener implements OrderUpdateListener {
 
-    @Override
-    public void onOrderUpdate(OrderUpdateEvent update) {
-        log.info("ORDER UPDATE → {} {} remaining: {}", update.getOrderId(), update.getOrderState(),
-                update.getRemainingQuantity());
-    }
+  @Override
+  public void onOrderUpdate(OrderUpdateEvent update) {
+    log.info("ORDER UPDATE → {} {} remaining: {}", update.getOrderId(), update.getOrderState(),
+            update.getRemainingQuantity());
+  }
 }

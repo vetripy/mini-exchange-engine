@@ -8,15 +8,15 @@ import org.trading.exchange.event.EngineEvent;
 @Getter
 public class MatchContext {
 
-    private final long sequence;
-    private final List<EngineEvent> events;
+  private final long sequence;
+  private final List<EngineEvent> events;
 
-    MatchContext(long sequence) {
-        this.sequence = sequence;
-        this.events = new ArrayList<>(20);
-    }
+  MatchContext(long sequence) {
+    this.sequence = sequence;
+    this.events = new ArrayList<>(20);
+  }
 
-    void emit(EngineEvent event) {
-        events.add(event);
-    }
+  void emit(EngineEvent event) {
+    events.add(event);
+  }
 }

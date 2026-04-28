@@ -7,14 +7,14 @@ import org.trading.exchange.listener.TradeListener;
 
 public class TestTradeListener implements TradeListener {
 
-    private final List<TradeEvent> tradeEvents = new ArrayList<>();
+  private final List<TradeEvent> tradeEvents = new ArrayList<>();
 
-    @Override
-    public void onTrade(TradeEvent tradeEvent) {
-        tradeEvents.add(tradeEvent);
-    }
+  @Override
+  public void onTrade(TradeEvent tradeEvent) {
+    tradeEvents.add(tradeEvent);
+  }
 
-    public List<TradeEvent> getTrades() {
-        return tradeEvents;
-    }
+  public List<TradeEvent> getTrades() {
+    return tradeEvents;
+  }
 }

@@ -7,11 +7,11 @@ import lombok.Getter;
 @Getter
 public class CancelOrderCommand implements EngineCommand {
 
-    private final String clientOrderId;
+  private final String clientOrderId;
 
-    public static CancelOrderCommand of(String clientOrderId) {
-        return CancelOrderCommand.builder().clientOrderId(clientOrderId).build();
-    }
+  public static CancelOrderCommand of(String clientOrderId) {
+    return CancelOrderCommand.builder().clientOrderId(clientOrderId).build();
+  }
 
 
 }

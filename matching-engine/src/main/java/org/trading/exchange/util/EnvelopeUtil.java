@@ -4,17 +4,17 @@ import org.trading.exchange.model.Envelope;
 
 public final class EnvelopeUtil {
 
-    private EnvelopeUtil() {}
+  private EnvelopeUtil() {}
 
-    public static <T> T unwrap(Envelope<T> envelope) {
-        return envelope.payload();
-    }
+  public static <T> T unwrap(Envelope<T> envelope) {
+    return envelope.payload();
+  }
 
-    public static <T> Envelope<T> wrap(long sequence, T payload) {
-        return Envelope.of(sequence, payload);
-    }
+  public static <T> Envelope<T> wrap(long sequence, T payload) {
+    return Envelope.of(sequence, payload);
+  }
 
-    public static long getSequence(Envelope<?> envelope) {
-        return envelope.sequence();
-    }
+  public static long getSequence(Envelope<?> envelope) {
+    return envelope.sequence();
+  }
 }
