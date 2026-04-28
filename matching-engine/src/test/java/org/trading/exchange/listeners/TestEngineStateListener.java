@@ -1,4 +1,4 @@
-package org.trading.exchange.utils;
+package org.trading.exchange.listeners;
 
 import lombok.extern.slf4j.Slf4j;
 import org.trading.exchange.engine.EngineStateListener;
@@ -11,7 +11,7 @@ public class TestEngineStateListener implements EngineStateListener {
     public void onStateChange(EngineState oldState, EngineState newState, Throwable cause) {
         if (cause != null) {
             log.warn("Engine state changed from {} to {} due to: {}", oldState, newState,
-                            cause.getMessage());
+                cause.getMessage());
         } else {
             log.info("Engine state changed from {} to {}", oldState, newState);
         }
