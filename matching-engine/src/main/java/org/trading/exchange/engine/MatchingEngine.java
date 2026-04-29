@@ -7,6 +7,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.trading.exchange.engine.command.CancelOrderCommand;
@@ -50,9 +51,9 @@ public class MatchingEngine {
     public MatchingEngine(EngineMode mode) {
         this.mode = mode;
         this.state = EngineState.NEW;
-        this.inboundEvents = new LinkedBlockingQueue<>();
+        this.inboundEvents = new LinkedBlockingQueue<>(20_000);
         this.sequencer = new Sequencer();
-        this.outboundEvents = new ArrayBlockingQueue<>(10_000);
+        this.outboundEvents = new ArrayBlockingQueue<>(20_000);
         for (Symbol symbol : Symbol.values()) {
             books.put(symbol.name(), new OrderBook());
         }
@@ -75,22 +76,36 @@ public class MatchingEngine {
     }
 
     public synchronized void stop() throws InterruptedException {
-        if (this.state != EngineState.RUNNING) {
-            throw new IllegalStateException("Engine not running");
+        if (this.state != EngineState.RUNNING && this.state != EngineState.FAILED) {
+            throw new IllegalStateException("Engine cannot be stopped from state: " + this.state);
         }
 
-        transitionTo(EngineState.STOPPING, null);
+        if (this.state == EngineState.RUNNING) {
+            transitionTo(EngineState.STOPPING, null);
+        }
 
         if (engineThread != null) {
             engineThread.interrupt();
-            engineThread.join();
+            try {
+                engineThread.join(5000); // 5 second timeout
+            } catch (InterruptedException e) {
+                log.warn("Interrupted while waiting for engine thread to stop");
+                Thread.currentThread().interrupt();
+            }
         }
-
-        transitionTo(EngineState.STOPPED, null);
 
         if (publisherThread != null) {
             publisherThread.interrupt();
-            publisherThread.join();
+            try {
+                publisherThread.join(5000); // 5 second timeout
+            } catch (InterruptedException e) {
+                log.warn("Interrupted while waiting for publisher thread to stop");
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        if (this.state != EngineState.STOPPED) {
+            transitionTo(EngineState.STOPPED, null);
         }
     }
 
@@ -131,7 +146,11 @@ public class MatchingEngine {
         if (EngineMode.SYNC.equals(this.mode)) {
             process(envelope);
         } else {
-            inboundEvents.put(envelope);
+            boolean accepted = inboundEvents.offer(envelope, 100, TimeUnit.MILLISECONDS);
+            if (!accepted) {
+                throw new IllegalStateException(
+                    "Engine inbound queue full — apply backpressure upstream");
+            }
         }
     }
 
@@ -156,24 +175,29 @@ public class MatchingEngine {
             throw new IllegalArgumentException("Duplicate clientOrderId");
         }
         clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
-        log.info("Processing new order: {} with sequence: {}", order, seq);
+        log.debug("Processing new order: {} with sequence: {}", order, seq);
         OrderBook orderBook = books.get(order.getSymbol().name());
         List<EngineEvent> events = orderBook.addOrder(order, seq);
+
+        if (order.getState().isTerminal()) {
+            clientIdToOrderId.remove(order.getClientOrderId());
+        }
+
         events.forEach(this::handleOutbound);
     }
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
         String orderId = cmd.getSymbol() + "-" + seq;
         return Order.builder().orderId(orderId).clientOrderId(cmd.getClientOrderId())
-                        .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol()))
-                        .side(cmd.getSide()).type(cmd.getType()).price(cmd.getPrice())
-                        .remainingQuantity(cmd.getQuantity()).build();
+            .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol()))
+            .side(cmd.getSide()).type(cmd.getType()).price(cmd.getPrice())
+            .remainingQuantity(cmd.getQuantity()).build();
 
     }
 
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String clientOrderId = cancelOrderCommand.getClientOrderId();
-        log.info("Processing cancel order: {} with sequence: {}", clientOrderId, seq);
+        log.debug("Processing cancel order: {} with sequence: {}", clientOrderId, seq);
 
         String orderId = clientIdToOrderId.get(cancelOrderCommand.getClientOrderId());
         if (orderId == null) {
@@ -183,6 +207,7 @@ public class MatchingEngine {
 
         OrderBook orderBook = books.get(Symbol.from(symbol).name());
         List<EngineEvent> events = orderBook.cancelOrder(orderId, seq);
+        clientIdToOrderId.remove(clientOrderId);
         events.forEach(this::handleOutbound);
     }
 

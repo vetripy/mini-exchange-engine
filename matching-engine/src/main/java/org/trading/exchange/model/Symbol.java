@@ -2,7 +2,7 @@ package org.trading.exchange.model;
 
 
 public enum Symbol {
-    TEST1, TEST2;
+    TEST1, TEST2, AAPL, GOOGL, MSFT, AMZN;
 
     public static Symbol from(String symbol) {
         try {
