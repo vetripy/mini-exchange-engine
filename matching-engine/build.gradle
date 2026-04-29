@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'com.diffplug.spotless' version '8.4.0'
+    id 'me.champeau.jmh' version '0.7.2'
 }
 
 
@@ -22,6 +23,10 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     implementation libs.slf4j.api
     runtimeOnly libs.logback.classic
+    testImplementation 'org.openjdk.jmh:jmh-core:1.37'
+    testImplementation 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
+    jmh 'org.openjdk.jmh:jmh-core:1.37'
+    jmh 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
 }
 
 spotless {
@@ -33,4 +38,21 @@ spotless {
 
 test {
     useJUnitPlatform()
+}
+
+jmh {
+    warmupIterations = 2
+    iterations = 2
+    fork = 2
+    timeUnit = 'us'
+    benchmarkMode = ['thrpt', 'avgt']
+    jvmArgsAppend = [
+            '-XX:+UseG1GC',
+            '-Xms2g',
+            '-Xmx2g',
+            '-XX:+AlwaysPreTouch'
+    ]
+    // Optional filters — uncomment to run a subset:
+    // includes = ['newOrder_sync']
+    // excludes = ['async']
 }
