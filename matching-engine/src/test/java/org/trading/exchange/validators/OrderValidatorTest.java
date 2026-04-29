@@ -27,7 +27,7 @@ class OrderValidatorTest {
         @DisplayName("Should throw NullPointerException when order is null")
         void validateNullOrder() {
             assertThrows(NullPointerException.class, () -> validator.validateInvariants(null),
-                    "Order cannot be null");
+                            "Order cannot be null");
         }
     }
 
@@ -39,11 +39,11 @@ class OrderValidatorTest {
         @DisplayName("Should throw NullPointerException when order ID is null")
         void validateNullOrderId() {
             Order order = Order.builder().orderId(null).userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.LIMIT).price(100L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.LIMIT).price(100L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(NullPointerException.class, () -> validator.validateInvariants(order),
-                    "Order ID cannot be null");
+                            "Order ID cannot be null");
         }
     }
 
@@ -55,22 +55,22 @@ class OrderValidatorTest {
         @DisplayName("Should throw IllegalStateException when quantity is zero")
         void validateZeroQuantity() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.LIMIT).price(100L).remainingQuantity(0L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.LIMIT).price(100L).remainingQuantity(0L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Quantity must be positive");
+                            "Quantity must be positive");
         }
 
         @Test
         @DisplayName("Should throw IllegalStateException when quantity is negative")
         void validateNegativeQuantity() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.LIMIT).price(100L).remainingQuantity(-5L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.LIMIT).price(100L).remainingQuantity(-5L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Quantity must be positive");
+                            "Quantity must be positive");
         }
     }
 
@@ -89,33 +89,33 @@ class OrderValidatorTest {
         @DisplayName("Should throw IllegalStateException when LIMIT order has null price")
         void validateLimitOrderWithNullPrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.LIMIT).price(null).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.LIMIT).price(null).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type LIMIT requires positive price");
+                            "Order type LIMIT requires positive price");
         }
 
         @Test
         @DisplayName("Should throw IllegalStateException when LIMIT order has zero price")
         void validateLimitOrderWithZeroPrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.LIMIT).price(0L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.LIMIT).price(0L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type LIMIT requires positive price");
+                            "Order type LIMIT requires positive price");
         }
 
         @Test
         @DisplayName("Should throw IllegalStateException when LIMIT order has negative price")
         void validateLimitOrderWithNegativePrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.LIMIT).price(-100L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.LIMIT).price(-100L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type LIMIT requires positive price");
+                            "Order type LIMIT requires positive price");
         }
     }
 
@@ -134,33 +134,33 @@ class OrderValidatorTest {
         @DisplayName("Should throw IllegalStateException when IOC order has null price")
         void validateIOCOrderWithNullPrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.SELL)
-                    .type(OrderType.IOC).price(null).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.IOC).price(null).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type IOC requires positive price");
+                            "Order type IOC requires positive price");
         }
 
         @Test
         @DisplayName("Should throw IllegalStateException when IOC order has zero price")
         void validateIOCOrderWithZeroPrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.SELL)
-                    .type(OrderType.IOC).price(0L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.IOC).price(0L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type IOC requires positive price");
+                            "Order type IOC requires positive price");
         }
 
         @Test
         @DisplayName("Should throw IllegalStateException when IOC order has negative price")
         void validateIOCOrderWithNegativePrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.SELL)
-                    .type(OrderType.IOC).price(-50L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.IOC).price(-50L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type IOC requires positive price");
+                            "Order type IOC requires positive price");
         }
     }
 
@@ -179,33 +179,33 @@ class OrderValidatorTest {
         @DisplayName("Should throw IllegalStateException when FOK order has null price")
         void validateFOKOrderWithNullPrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.FOK).price(null).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.FOK).price(null).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type FOK requires positive price");
+                            "Order type FOK requires positive price");
         }
 
         @Test
         @DisplayName("Should throw IllegalStateException when FOK order has zero price")
         void validateFOKOrderWithZeroPrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.FOK).price(0L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.FOK).price(0L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type FOK requires positive price");
+                            "Order type FOK requires positive price");
         }
 
         @Test
         @DisplayName("Should throw IllegalStateException when FOK order has negative price")
         void validateFOKOrderWithNegativePrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.FOK).price(-75L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.FOK).price(-75L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Order type FOK requires positive price");
+                            "Order type FOK requires positive price");
         }
     }
 
@@ -224,11 +224,11 @@ class OrderValidatorTest {
         @DisplayName("Should throw IllegalStateException when MARKET order has price")
         void validateMarketOrderWithPrice() {
             Order order = Order.builder().orderId("order123").userId("user123").side(OrderSide.BUY)
-                    .type(OrderType.MARKET).price(100L).remainingQuantity(10L)
-                    .timestamp(System.currentTimeMillis()).build();
+                            .type(OrderType.MARKET).price(100L).remainingQuantity(10L)
+                            .timestamp(System.currentTimeMillis()).build();
 
             assertThrows(IllegalStateException.class, () -> validator.validateInvariants(order),
-                    "Market orders should not have price");
+                            "Market orders should not have price");
         }
     }
 }

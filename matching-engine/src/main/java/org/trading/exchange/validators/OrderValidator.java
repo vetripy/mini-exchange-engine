@@ -17,7 +17,7 @@ public final class OrderValidator {
             case LIMIT, IOC, FOK -> {
                 if (order.getPrice() == null || order.getPrice() <= 0) {
                     throw new IllegalStateException(
-                        "Order type " + order.getType() + " requires positive price");
+                                    "Order type " + order.getType() + " requires positive price");
                 }
             }
             case MARKET -> {

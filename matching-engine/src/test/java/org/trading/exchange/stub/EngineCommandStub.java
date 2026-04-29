@@ -10,12 +10,12 @@ public class EngineCommandStub {
 
     public static EngineCommand getValidLimitBuyCommand(String symbol, long price, long quantity) {
         return NewOrderCommand.of(UUID.randomUUID().toString(), symbol, OrderSide.BUY,
-                OrderType.LIMIT, "user1", price, quantity, System.currentTimeMillis());
+                        OrderType.LIMIT, "user1", price, quantity, System.currentTimeMillis());
     }
 
     public static EngineCommand getValidLimitSellCommand(String symbol, long price, long quantity) {
         return NewOrderCommand.of(UUID.randomUUID().toString(), symbol, OrderSide.SELL,
-                OrderType.LIMIT, "user2", price, quantity, System.currentTimeMillis());
+                        OrderType.LIMIT, "user2", price, quantity, System.currentTimeMillis());
     }
 
 }
