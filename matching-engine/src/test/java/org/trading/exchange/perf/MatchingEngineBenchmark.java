@@ -1,9 +1,19 @@
 package org.trading.exchange.perf;
 
-import java.util.UUID;
-import lombok.extern.slf4j.Slf4j;
-import org.openjdk.jmh.annotations.*;
-import org.openjdk.jmh.infra.Blackhole;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Measurement;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
@@ -14,429 +24,482 @@ import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.OrderSide;
 import org.trading.exchange.model.OrderType;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * JMH Benchmarks for MatchingEngine.
+ * Consolidated JMH Benchmarks for MatchingEngine.
+ * <p>
+ * Run via Gradle: ./gradlew jmh                                    # all benchmarks ./gradlew jmh
+ * --include "baseline"              # baseline scenarios only ./gradlew jmh --include "heavyBook" #
+ * heavy book scenarios ./gradlew jmh -Pjmh.profilers="gc"              # with GC profiler
+ * <p>
+ * Benchmark Categories: - baseline_*        : Core operations (single order, matching, cancel) -
+ * heavyBook_*       : Large pre-loaded book scenarios - deepBook_*        : Multi-level price
+ * traversal - partialFill_*     : Partial order matching - multiSymbol_*     : Cross-symbol
+ * distribution - async_*           : ASYNC mode producer overhead
  */
-@Slf4j
 @BenchmarkMode({Mode.Throughput, Mode.AverageTime})
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
 @Warmup(iterations = 3, time = 2, timeUnit = TimeUnit.SECONDS)
 @Measurement(iterations = 5, time = 3, timeUnit = TimeUnit.SECONDS)
-@Fork(value = 2, jvmArgsAppend = {"-XX:+UseG1GC", "-Xms2g", "-Xmx2g", // fixed heap to avoid GC
-        // skew
-        "-XX:+AlwaysPreTouch"})
+@Fork(value = 2, jvmArgsAppend = {
+    "-XX:+UseG1GC",
+    "-Xms512m", "-Xmx512m",
+    "-XX:+AlwaysPreTouch"
+})
 public class MatchingEngineBenchmark {
 
-    //
-    // // -----------------------------------------------------------------------
-    // // Shared state: one engine per fork, reset between iterations
-    // // -----------------------------------------------------------------------
-    //
-    // private static final String[] SYMBOLS = {"AAPL", "GOOGL", "MSFT", "AMZN"};
-    //
-    private static NewOrderCommand buildBuyLimit(String clientId, String symbol, long price,
-            long qty) {
-        return NewOrderCommand.builder().clientOrderId(clientId).userId("user-bench").symbol(symbol)
-                .side(OrderSide.BUY).type(OrderType.LIMIT).price(price).quantity(qty).build();
-    }
-
-    //
-    private static NewOrderCommand buildSellLimit(String clientId, String symbol, long price,
-            long qty) {
-        return NewOrderCommand.builder().clientOrderId(clientId).userId("user-bench").symbol(symbol)
-                .side(OrderSide.SELL).type(OrderType.LIMIT).price(price).quantity(qty).build();
-    }
-
-    @Benchmark
-    public void newOrder_heavyBook_crossingSell(LoadedBookState s) throws InterruptedException {
-        s.engine.submit(buildSellLimit(UUID.randomUUID().toString(), "AAPL", 100_00, 100_000));
-    }
-
-    // Scenario A: crossing a small portion of the book
-    @Benchmark
-    public void heavyBook_partialCross(LoadedBookState s) throws InterruptedException {
-        s.engine.submit(buildSellLimit(UUID.randomUUID().toString(), "AAPL", 100_00, 100)); // crosses
-                                                                                            // 100
-                                                                                            // units
-    }
-
-    // Scenario B: crossing the entire book (all 100k units)
-    @Benchmark
-    public void heavyBook_fullCross(LoadedBookState s) throws InterruptedException {
-        s.engine.submit(buildSellLimit(UUID.randomUUID().toString(), "AAPL", 100_00, 100_000)); // crosses
-                                                                                                // all
-    }
-
-    @Benchmark
-    public void deepBook_crossMultipleLevels(DeepBookState s) throws InterruptedException {
-        // Crosses through 1000 price levels at once
-        s.engine.submit(buildSellLimit(UUID.randomUUID().toString(), "AAPL", 100_00, 1000));
-    }
-
-    // @State(Scope.Benchmark)
-    // public static class LoadedBookState {
-    //
-    // MatchingEngine engine;
-    //
-    // @Setup(Level.Trial)
-    // public void setup() throws Exception {
-    // engine = new MatchingEngine(EngineMode.SYNC);
-    // engine.start();
-    //
-    // // Pre-load 100k unmatched BUYs across 500 price levels
-    // for (int i = 1; i <= 100_000; i++) {
-    // engine.submit(buildBuyLimit("LOAD-" + i, "AAPL", 100_00 + (i % 500), // spread
-    // // across
-    // // prices
-    // 1));
-    // }
-    // }
-    //
-    // // Now measure a crossing SELL on a heavy book
-    // }
+    // ==================================================================================
+    // BASELINE SCENARIOS - Core functionality with clean state per iteration
+    // ==================================================================================
 
     @State(Scope.Benchmark)
-    public static class LoadedBookState {
+    public static class BaselineState {
 
         MatchingEngine engine;
-        AtomicLong orderCount = new AtomicLong(0);
+        AtomicLong clientIdCounter;
 
         @Setup(Level.Trial)
-        public void setup() throws Exception {
+        public void setupTrial() throws Exception {
+            startEngine();
+        }
+
+        @Setup(Level.Iteration)
+        public void setupIteration() throws Exception {
+            if (engine != null) {
+                engine.stop();
+            }
+            startEngine();
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDownTrial() throws Exception {
+            engine.stop();
+        }
+
+        private void startEngine() throws Exception {
+            engine = new MatchingEngine(EngineMode.SYNC);
+            engine.start();
+            clientIdCounter = new AtomicLong(0);
+        }
+
+        String nextClientId() {
+            return "B-" + clientIdCounter.incrementAndGet();
+        }
+    }
+
+    /**
+     * Baseline: Single limit BUY that rests on book (no match). Measures: validation + book
+     * insertion + map update.
+     */
+    @Benchmark
+    public void baseline_limitBuy_noMatch(BaselineState s) throws InterruptedException {
+        s.engine.submit(buildBuyLimit(s.nextClientId(), "AAPL", 100_00, 1));
+    }
+
+    /**
+     * Baseline: Two crossing limit orders (one trade). Measures: matching + trade execution + event
+     * emission.
+     */
+    @Benchmark
+    public void baseline_matchingTrade(BaselineState s) throws InterruptedException {
+        long n = s.clientIdCounter.incrementAndGet();
+        s.engine.submit(buildBuyLimit("B-" + n, "AAPL", 150_00, 5));
+        s.engine.submit(buildSellLimit("S-" + n, "AAPL", 150_00, 5));
+    }
+
+    /**
+     * Baseline: Market order hitting pre-seeded limit. Measures: market order matching path.
+     */
+    @Benchmark
+    public void baseline_marketOrder(BaselineState s) throws InterruptedException {
+        long n = s.clientIdCounter.incrementAndGet();
+        s.engine.submit(buildBuyLimit("L-" + n, "AAPL", 155_00, 10));
+        s.engine.submit(buildMarketOrder("M-" + n, "AAPL", OrderSide.SELL, 10));
+    }
+
+    // ==================================================================================
+    // CANCEL SCENARIOS - Pre-loaded orders for cancel path isolation
+    // ==================================================================================
+
+    @State(Scope.Benchmark)
+    public static class CancelState {
+
+        MatchingEngine engine;
+        String[] clientOrderIds;
+        int index = 0;
+        private static final int PRELOAD_SIZE = 10_000;
+
+        @Setup(Level.Trial)
+        public void setupTrial() throws Exception {
+            engine = new MatchingEngine(EngineMode.SYNC);
+            engine.start();
+            clientOrderIds = new String[PRELOAD_SIZE];
+            for (int i = 0; i < PRELOAD_SIZE; i++) {
+                String cid = "CANCEL-" + i;
+                clientOrderIds[i] = cid;
+                engine.submit(buildBuyLimit(cid, "AAPL", 150_00, 10));
+            }
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDownTrial() throws Exception {
+            engine.stop();
+        }
+
+        String nextClientId() {
+            return clientOrderIds[index++ % clientOrderIds.length];
+        }
+    }
+
+    /**
+     * Cancel path: Remove resting order from book. Measures: order lookup + book removal + map
+     * cleanup.
+     */
+    @Benchmark
+    public void baseline_cancelOrder(CancelState s) throws InterruptedException {
+        CancelOrderCommand cancel = CancelOrderCommand.builder()
+            .clientOrderId(s.nextClientId())
+            .build();
+        s.engine.submit(cancel);
+    }
+
+    // ==================================================================================
+    // HEAVY BOOK SCENARIOS - Large order count, test scalability
+    // ==================================================================================
+
+    @State(Scope.Benchmark)
+    public static class HeavyBookState {
+
+        MatchingEngine engine;
+        AtomicLong sellCounter = new AtomicLong(0);
+
+        @Setup(Level.Trial)
+        public void setupTrial() throws Exception {
             engine = new MatchingEngine(EngineMode.SYNC);
             engine.start();
 
+            // Load 100k BUY orders across 500 price levels
             for (int i = 1; i <= 100_000; i++) {
-                engine.submit(buildBuyLimit("LOAD-" + i, "AAPL", 100_00 + (i % 500), 1 // <-- each
-                                                                                       // order is
-                                                                                       // only 1
-                                                                                       // unit, so
-                                                                                       // crossing
-                                                                                       // 100k units
-                                                                                       // means
-                                                                                       // matching
-                                                                                       // ALL
+                engine.submit(buildBuyLimit(
+                    "HEAVY-" + i,
+                    "AAPL",
+                    100_00 + (i % 500),
+                    1
                 ));
             }
-            orderCount.set(100_000);
         }
 
-        // Log it to confirm
         @TearDown(Level.Trial)
-        public void tearDown() throws Exception {
-            System.out.println("Loaded " + orderCount.get() + " orders");
+        public void tearDownTrial() throws Exception {
             engine.stop();
         }
     }
 
-    // Scenario C: very deep book — crossing multiple price levels
+    /**
+     * Heavy book: Partial cross (100 units on 100k order book). Measures: matching overhead with
+     * large book.
+     */
+    @Benchmark
+    public void heavyBook_partialCross(HeavyBookState s) throws InterruptedException {
+        s.engine.submit(
+            buildSellLimit("SELL-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 100));
+    }
+
+    /**
+     * Heavy book: Full cross (100k units on 100k order book). Measures: bulk matching performance.
+     */
+    @Benchmark
+    public void heavyBook_fullCross(HeavyBookState s) throws InterruptedException {
+        s.engine.submit(
+            buildSellLimit("SELL-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 100_000));
+    }
+
+    // ==================================================================================
+    // DEEP BOOK SCENARIOS - Multi-level price traversal
+    // ==================================================================================
+
     @State(Scope.Benchmark)
     public static class DeepBookState {
 
         MatchingEngine engine;
+        AtomicLong sellCounter = new AtomicLong(0);
 
         @Setup(Level.Trial)
-        public void setup() throws Exception {
+        public void setupTrial() throws Exception {
             engine = new MatchingEngine(EngineMode.SYNC);
             engine.start();
 
-            // Load 10k orders, but spread them across 5000 price levels (sparse book)
+            // Load 10k orders at different prices (sparse book, deep levels)
             for (int i = 0; i < 10_000; i++) {
-                engine.submit(buildBuyLimit("DEEP-" + i, "AAPL", 100_00 + (i * 100), // every order
-                                                                                     // at a
-                                                                                     // different
-                                                                                     // price
-                        1));
+                engine.submit(buildBuyLimit(
+                    "DEEP-" + i,
+                    "AAPL",
+                    100_00 + (i * 10),  // Every 10 cents
+                    1
+                ));
             }
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDownTrial() throws Exception {
+            engine.stop();
         }
     }
 
-    //
-    // // -----------------------------------------------------------------------
-    // // Helper factories
-    // // -----------------------------------------------------------------------
-    //
-    // private static NewOrderCommand buildMarketOrder(String clientId, String symbol, OrderSide
-    // side,
-    // long qty) {
-    // return NewOrderCommand.builder().clientOrderId(clientId).userId("user-bench").symbol(symbol)
-    // .side(side).type(OrderType.MARKET).quantity(qty).build();
-    // }
-    //
-    // public static void main(String[] args) throws RunnerException {
-    // Options opt = new OptionsBuilder().include(MatchingEngineBenchmark.class.getSimpleName())
-    // .warmupIterations(3).measurementIterations(5).forks(1) // use 2 for final numbers
-    // .build();
-    // new Runner(opt).run();
-    // }
-    //
-    // /**
-    // * Baseline: submit a single limit BUY that rests on the book (no match). Isolates order
-    // * validation + order-book insertion cost.
-    // */
-    // @Benchmark
-    // public void newOrder_sync_limitBuy_noMatch(SyncEngineState s, Blackhole bh)
-    // throws InterruptedException {
-    // String cid = s.nextClientId();
-    // s.engine.submit(buildBuyLimit(cid, "AAPL", 100_00, 1));
-    // }
-    //
-    // // -----------------------------------------------------------------------
-    // // Benchmarks — SYNC mode
-    // // -----------------------------------------------------------------------
-    //
-    // @Benchmark
-    // public void newOrder_sync_matchingTrade(CrossingOrderState s) throws InterruptedException {
-    // long n = s.counter.incrementAndGet();
-    // // Place a resting BUY, then a crossing SELL — one trade fires per pair
-    // s.engine.submit(buildBuyLimit("B-" + n, "AAPL", 150_00, 5));
-    // s.engine.submit(buildSellLimit("S-" + n, "AAPL", 150_00, 5));
-    // }
-    //
-    // /**
-    // * Market order hitting a pre-seeded book. Seeds 1 resting limit per invocation then sends a
-    // * crossing market order.
-    // */
-    // @Benchmark
-    // public void newOrder_sync_marketOrder(CrossingOrderState s) throws InterruptedException {
-    // long n = s.counter.incrementAndGet();
-    // s.engine.submit(buildBuyLimit("L-" + n, "AAPL", 155_00, 10));
-    // s.engine.submit(buildMarketOrder("M-" + n, "AAPL", OrderSide.SELL, 10));
-    // }
-    //
-    // /**
-    // * Cancel an order that is resting on the book. Uses the pre-loaded CancelOrderState so cancel
-    // * logic is isolated.
-    // */
-    // @Benchmark
-    // public void cancelOrder_sync(CancelOrderState s) throws InterruptedException {
-    // String cid = s.nextClientId();
-    // CancelOrderCommand cancel = CancelOrderCommand.builder().clientOrderId(cid).build();
-    // s.engine.submit(cancel);
-    // }
-    //
-    // /**
-    // * Measures cost of sequencer.getNextSequence() + LinkedBlockingQueue.put(). Engine thread
-    // * drains asynchronously; this is purely the producer side.
-    // */
-    // @Benchmark
-    // public void newOrder_async_submitCost(AsyncEngineState s) throws InterruptedException {
-    // String cid = s.nextClientId();
-    // s.engine.submit(buildBuyLimit(cid, "GOOGL", 180_00, 1));
-    // }
-    //
-    // /**
-    // * Distributes orders evenly across all configured symbols. Useful to check per-book
-    // contention
-    // * or cache effects.
-    // */
-    // @Benchmark
-    // public void newOrder_sync_multiSymbol(SyncEngineState s) throws InterruptedException {
-    // long n = s.clientIdCounter.incrementAndGet();
-    // String symbol = SYMBOLS[(int) (n % SYMBOLS.length)];
-    // s.engine.submit(buildBuyLimit("MS-" + n, symbol, 100_00, 1));
-    // }
-    //
-    // // -----------------------------------------------------------------------
-    // // Benchmarks — ASYNC mode (measures enqueue / submit overhead only)
-    // // -----------------------------------------------------------------------
-    //
-    // /**
-    // * SYNC engine — process() is called on the caller's thread. Suitable for latency / throughput
-    // * benchmarks without thread coordination noise.
-    // */
-    // @State(Scope.Benchmark)
-    // public static class SyncEngineState {
-    //
-    // MatchingEngine engine;
-    // AtomicLong clientIdCounter;
-    //
-    // @Setup(Level.Trial)
-    // public void setupTrial() throws Exception {
-    // try {
-    // log.debug("Setting up SyncEngineState");
-    // engine = new MatchingEngine(EngineMode.SYNC);
-    // engine.start();
-    // clientIdCounter = new AtomicLong(0);
-    // log.debug("SyncEngineState setup complete");
-    // } catch (Exception e) {
-    // log.error("Failed to setup SyncEngineState", e);
-    // throw e;
-    // }
-    // }
-    //
-    // @TearDown(Level.Trial)
-    // public void tearDownTrial() throws Exception {
-    // try {
-    // log.debug("Tearing down SyncEngineState");
-    // if (engine != null) {
-    // engine.stop();
-    // }
-    // log.debug("SyncEngineState teardown complete");
-    // } catch (Exception e) {
-    // log.error("Failed to teardown SyncEngineState", e);
-    // throw e;
-    // }
-    // }
-    //
-    // /**
-    // * Returns a unique client order ID for each invocation.
-    // */
-    // String nextClientId() {
-    // return "C-" + clientIdCounter.incrementAndGet();
-    // }
-    // }
-    //
-    // // -----------------------------------------------------------------------
-    // // Benchmarks — multi-symbol spread
-    // // -----------------------------------------------------------------------
-    //
-    // /**
-    // * ASYNC engine — commands are queued; the engine thread processes them. Benchmarks here
-    // measure
-    // * producer-side submit() overhead (enqueue cost), not end-to-end latency.
-    // */
-    // @State(Scope.Benchmark)
-    // public static class AsyncEngineState {
-    //
-    // MatchingEngine engine;
-    // AtomicLong clientIdCounter;
-    //
-    // @Setup(Level.Trial)
-    // public void setupTrial() throws Exception {
-    // try {
-    // log.debug("Setting up AsyncEngineState");
-    // engine = new MatchingEngine(EngineMode.ASYNC);
-    // engine.start();
-    // clientIdCounter = new AtomicLong(0);
-    // log.debug("AsyncEngineState setup complete");
-    // } catch (Exception e) {
-    // log.error("Failed to setup AsyncEngineState", e);
-    // throw e;
-    // }
-    // }
-    //
-    // @TearDown(Level.Trial)
-    // public void tearDownTrial() throws Exception {
-    // try {
-    // log.debug("Tearing down AsyncEngineState");
-    // if (engine != null) {
-    // engine.stop();
-    // }
-    // log.debug("AsyncEngineState teardown complete");
-    // } catch (Exception e) {
-    // log.error("Failed to teardown AsyncEngineState", e);
-    // throw e;
-    // }
-    // }
-    //
-    // String nextClientId() {
-    // return "CA-" + clientIdCounter.incrementAndGet();
-    // }
-    // }
-    //
-    // /**
-    // * Pre-built cancel scenario: submits a batch of orders during setup so the benchmark body
-    // only
-    // * measures the cancel path.
-    // */
-    // @State(Scope.Thread)
-    // public static class CancelOrderState {
-    //
-    // private static final int PRELOAD_SIZE = 10_000;
-    // // Reuses the SyncEngineState but sets up pre-loaded orders.
-    // MatchingEngine engine;
-    // String[] clientOrderIds;
-    // int index = 0;
-    //
-    // @Setup(Level.Trial)
-    // public void setup() throws Exception {
-    // try {
-    // log.info("Setting up CancelOrderState with {} pre-loaded orders", PRELOAD_SIZE);
-    // engine = new MatchingEngine(EngineMode.SYNC);
-    // engine.start();
-    // clientOrderIds = new String[PRELOAD_SIZE];
-    // for (int i = 0; i < PRELOAD_SIZE; i++) {
-    // String cid = "PRE-" + i;
-    // clientOrderIds[i] = cid;
-    // engine.submit(buildBuyLimit(cid, "AAPL", 150_00, 10));
-    // }
-    // log.info("CancelOrderState setup complete");
-    // } catch (Exception e) {
-    // log.error("Failed to setup CancelOrderState", e);
-    // throw e;
-    // }
-    // }
-    //
-    // @TearDown(Level.Trial)
-    // public void tearDown() throws Exception {
-    // try {
-    // log.info("Tearing down CancelOrderState");
-    // if (engine != null) {
-    // engine.stop();
-    // }
-    // log.info("CancelOrderState teardown complete");
-    // } catch (Exception e) {
-    // log.error("Failed to teardown CancelOrderState", e);
-    // throw e;
-    // }
-    // }
-    //
-    // /**
-    // * Round-robins through the pre-loaded client IDs.
-    // */
-    // String nextClientId() {
-    // String cid = clientOrderIds[index % clientOrderIds.length];
-    // index++;
-    // return cid;
-    // }
-    // }
-    //
-    // // -----------------------------------------------------------------------
-    // // Main — run from IDE or standalone jar
-    // // -----------------------------------------------------------------------
-    //
-    // /**
-    // * Submit a SELL limit that immediately crosses the best resting BUY. Measures matching +
-    // event
-    // * publication on the hot path.
-    // * <p>
-    // * Setup: seeds one resting BUY per iteration via @Setup(Level.Invocation).
-    // */
-    // @State(Scope.Thread)
-    // public static class CrossingOrderState {
-    //
-    // MatchingEngine engine;
-    // AtomicLong counter = new AtomicLong();
-    //
-    // @Setup(Level.Trial)
-    // public void setup() throws Exception {
-    // try {
-    // log.info("Setting up CrossingOrderState");
-    // engine = new MatchingEngine(EngineMode.SYNC);
-    // engine.start();
-    // log.info("CrossingOrderState setup complete");
-    // } catch (Exception e) {
-    // log.error("Failed to setup CrossingOrderState", e);
-    // throw e;
-    // }
-    // }
-    //
-    // @TearDown(Level.Trial)
-    // public void tearDown() throws Exception {
-    // try {
-    // log.info("Tearing down CrossingOrderState");
-    // if (engine != null) {
-    // engine.stop();
-    // }
-    // log.info("CrossingOrderState teardown complete");
-    // } catch (Exception e) {
-    // log.error("Failed to teardown CrossingOrderState", e);
-    // throw e;
-    // }
-    // }
-    // }
+    /**
+     * Deep book: Cross through 1000 price levels. Measures: TreeMap traversal efficiency.
+     */
+    @Benchmark
+    public void deepBook_crossMultipleLevels(DeepBookState s) throws InterruptedException {
+        s.engine.submit(
+            buildSellLimit("XING-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 1000));
+    }
+
+    // ==================================================================================
+    // PARTIAL FILL SCENARIOS - Fractional order matching
+    // ==================================================================================
+
+    @State(Scope.Benchmark)
+    public static class PartialFillState {
+
+        MatchingEngine engine;
+        AtomicLong sellCounter = new AtomicLong(0);
+
+        @Setup(Level.Trial)
+        public void setupTrial() throws Exception {
+            engine = new MatchingEngine(EngineMode.SYNC);
+            engine.start();
+
+            // Load 1k orders of 50 units each
+            for (int i = 0; i < 1000; i++) {
+                engine.submit(buildBuyLimit(
+                    "PARTIAL-" + i,
+                    "AAPL",
+                    100_00 + (i % 50),
+                    50
+                ));
+            }
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDownTrial() throws Exception {
+            engine.stop();
+        }
+    }
+
+    /**
+     * Partial fill: Small cross (100 units) - partial fills. Measures: partial order update
+     * overhead.
+     */
+    @Benchmark
+    public void partialFill_small(PartialFillState s) throws InterruptedException {
+        s.engine.submit(
+            buildSellLimit("PS-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 100));
+    }
+
+    /**
+     * Partial fill: Medium cross (500 units) - multiple partials. Measures: accumulated partial
+     * fill overhead.
+     */
+    @Benchmark
+    public void partialFill_medium(PartialFillState s) throws InterruptedException {
+        s.engine.submit(
+            buildSellLimit("PM-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 500));
+    }
+
+    /**
+     * Partial fill: Full cross (50k units) - all complete fills. Measures: baseline for comparison
+     * with partial scenarios.
+     */
+    @Benchmark
+    public void partialFill_fullMatch(PartialFillState s) throws InterruptedException {
+        s.engine.submit(
+            buildSellLimit("PF-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 50_000));
+    }
+
+    // ==================================================================================
+    // MULTI-SYMBOL SCENARIOS - Cross-book distribution
+    // ==================================================================================
+
+    private static final String[] SYMBOLS = {"AAPL", "GOOGL", "MSFT", "AMZN"};
+
+    @State(Scope.Benchmark)
+    public static class MultiSymbolState {
+
+        MatchingEngine engine;
+        AtomicLong counter = new AtomicLong(0);
+
+        @Setup(Level.Trial)
+        public void setupTrial() throws Exception {
+            startEngine();
+        }
+
+        @Setup(Level.Iteration)
+        public void setupIteration() throws Exception {
+            if (engine != null) {
+                engine.stop();
+            }
+            startEngine();
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDownTrial() throws Exception {
+            engine.stop();
+        }
+
+        private void startEngine() throws Exception {
+            engine = new MatchingEngine(EngineMode.SYNC);
+            engine.start();
+            counter = new AtomicLong(0);
+        }
+    }
+
+    /**
+     * Multi-symbol: Distribute orders across all symbols. Measures: per-book isolation, cache
+     * effects.
+     */
+    @Benchmark
+    public void multiSymbol_distribution(MultiSymbolState s) throws InterruptedException {
+        long n = s.counter.incrementAndGet();
+        String symbol = SYMBOLS[(int) (n % SYMBOLS.length)];
+        s.engine.submit(buildBuyLimit("MS-" + n, symbol, 100_00, 1));
+    }
+
+    // ==================================================================================
+    // ASYNC MODE SCENARIOS - Producer-side overhead
+    // ==================================================================================
+
+    @State(Scope.Benchmark)
+    public static class AsyncState {
+
+        MatchingEngine engine;
+        AtomicLong clientIdCounter;
+
+        @Setup(Level.Trial)
+        public void setupTrial() throws Exception {
+            engine = new MatchingEngine(EngineMode.ASYNC);
+            engine.start();
+            clientIdCounter = new AtomicLong(0);
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDownTrial() throws Exception {
+            engine.stop();
+        }
+
+        String nextClientId() {
+            return "ASYNC-" + clientIdCounter.incrementAndGet();
+        }
+    }
+
+    /**
+     * Async mode: Submit cost (sequencer + queue enqueue). Measures: producer-side latency only
+     * (not end-to-end).
+     */
+    @Benchmark
+    public void async_submitCost(AsyncState s) throws InterruptedException {
+        s.engine.submit(buildBuyLimit(s.nextClientId(), "GOOGL", 180_00, 1));
+    }
+
+    // ==================================================================================
+    // WORST CASE SCENARIOS - Edge cases and stress tests
+    // ==================================================================================
+
+    @State(Scope.Benchmark)
+    public static class WorstCaseState {
+
+        MatchingEngine engine;
+        AtomicLong sellCounter = new AtomicLong(0);
+
+        @Setup(Level.Trial)
+        public void setupTrial() throws Exception {
+            engine = new MatchingEngine(EngineMode.SYNC);
+            engine.start();
+
+            // Worst case: 10k orders at 10k unique prices
+            for (int i = 0; i < 10_000; i++) {
+                engine.submit(buildBuyLimit(
+                    "WC-" + i,
+                    "AAPL",
+                    100_00 + i,  // Every order at unique price
+                    100
+                ));
+            }
+        }
+
+        @TearDown(Level.Trial)
+        public void tearDownTrial() throws Exception {
+            engine.stop();
+        }
+    }
+
+    /**
+     * Worst case: Market order crossing entire sparse book. Measures: maximum price level traversal
+     * overhead.
+     */
+    @Benchmark
+    public void worstCase_marketSweep(WorstCaseState s) throws InterruptedException {
+        s.engine.submit(
+            buildSellMarket("SWEEP-" + s.sellCounter.incrementAndGet(), "AAPL", 1_000_000));
+    }
+
+    // ==================================================================================
+    // ORDER BUILDER HELPERS
+    // ==================================================================================
+
+    private static NewOrderCommand buildBuyLimit(String clientId, String symbol, long price,
+        long qty) {
+        return NewOrderCommand.builder()
+            .clientOrderId(clientId)
+            .userId("user-bench")
+            .symbol(symbol)
+            .side(OrderSide.BUY)
+            .type(OrderType.LIMIT)
+            .price(price)
+            .quantity(qty)
+            .build();
+    }
+
+    private static NewOrderCommand buildSellLimit(String clientId, String symbol, long price,
+        long qty) {
+        return NewOrderCommand.builder()
+            .clientOrderId(clientId)
+            .userId("user-bench")
+            .symbol(symbol)
+            .side(OrderSide.SELL)
+            .type(OrderType.LIMIT)
+            .price(price)
+            .quantity(qty)
+            .build();
+    }
+
+    private static NewOrderCommand buildMarketOrder(String clientId, String symbol, OrderSide side,
+        long qty) {
+        return NewOrderCommand.builder()
+            .clientOrderId(clientId)
+            .userId("user-bench")
+            .symbol(symbol)
+            .side(side)
+            .type(OrderType.MARKET)
+            .quantity(qty)
+            .build();
+    }
+
+    private static NewOrderCommand buildSellMarket(String clientId, String symbol, long qty) {
+        return buildMarketOrder(clientId, symbol, OrderSide.SELL, qty);
+    }
+
+    // ==================================================================================
+    // MAIN - Run from IDE or standalone
+    // ==================================================================================
+
+    public static void main(String[] args) throws RunnerException {
+        Options opt = new OptionsBuilder()
+            .include(MatchingEngineBenchmark.class.getSimpleName())
+            .warmupIterations(3)
+            .measurementIterations(5)
+            .forks(2)
+            .build();
+        new Runner(opt).run();
+    }
 }
