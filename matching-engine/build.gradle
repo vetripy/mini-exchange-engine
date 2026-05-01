@@ -53,6 +53,6 @@ jmh {
             '-XX:+AlwaysPreTouch'
     ]
     // Optional filters — uncomment to run a subset:
-    // includes = ['newOrder_sync']
+    includes = ['baseline']
     // excludes = ['async']
 }

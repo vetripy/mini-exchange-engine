@@ -9,6 +9,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.TreeMap;
 import lombok.extern.slf4j.Slf4j;
 import org.trading.exchange.event.EngineEvent;
@@ -97,7 +98,8 @@ public class OrderBook {
 
     private void matchBuyWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Deque<Order> queue = sellOrders.firstEntry().getValue();
+            Entry<Long, Deque<Order>> entry = sellOrders.firstEntry();
+            Deque<Order> queue = entry.getValue();
             Order sellOrder = queue.peek();
 
             if (checkPrice && (!(order.getPrice() >= sellOrder.getPrice()))) {
@@ -117,7 +119,8 @@ public class OrderBook {
 
     private void matchSellWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Deque<Order> queue = buyOrders.firstEntry().getValue();
+            Entry<Long, Deque<Order>> entry = buyOrders.firstEntry();
+            Deque<Order> queue = entry.getValue();
             Order buyOrder = queue.peek();
 
             if (checkPrice && (!(order.getPrice() <= buyOrder.getPrice()))) {
@@ -187,7 +190,8 @@ public class OrderBook {
     }
 
     private void addToBook(TreeMap<Long, Deque<Order>> book, Order order) {
-        book.computeIfAbsent(order.getPrice(), k -> new java.util.LinkedList<>()).offerLast(order);
+        book.computeIfAbsent(order.getPrice(), k -> new java.util.ArrayDeque<>(20))
+            .offerLast(order);
         orderIndex.put(order.getOrderId(), order);
     }
 
@@ -196,12 +200,12 @@ public class OrderBook {
             matchingOrder.getRemainingQuantity());
         restingOrder.reduceQuantity(tradeQuantity);
         matchingOrder.reduceQuantity(tradeQuantity);
-        Long tradePrice = restingOrder.getPrice();
+        long tradePrice = restingOrder.getPrice();
         emitOrderUpdate(restingOrder, ctx);
         emitTrade(restingOrder, matchingOrder, tradePrice, tradeQuantity, ctx);
     }
 
-    private long availableSellLiquidity(Long priceLimit) {
+    private long availableSellLiquidity(long priceLimit) {
         long total = 0L;
 
         for (var entry : sellOrders.entrySet()) {
@@ -217,7 +221,7 @@ public class OrderBook {
         return total;
     }
 
-    private long availableBuyLiquidity(Long priceLimit) {
+    private long availableBuyLiquidity(long priceLimit) {
         long total = 0L;
 
         for (var entry : buyOrders.entrySet()) {
@@ -243,7 +247,7 @@ public class OrderBook {
         ctx.emit(update);
     }
 
-    private void emitTrade(Order restingOrder, Order matchingOrder, Long price, Long quantity,
+    private void emitTrade(Order restingOrder, Order matchingOrder, long price, long quantity,
         MatchContext ctx) {
         String buyOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         String sellOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.SELL);

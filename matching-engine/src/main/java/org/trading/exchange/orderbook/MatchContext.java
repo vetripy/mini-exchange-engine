@@ -13,7 +13,7 @@ public class MatchContext {
 
     MatchContext(long sequence) {
         this.sequence = sequence;
-        this.events = new ArrayList<>(20);
+        this.events = new ArrayList<>(32);
     }
 
     void emit(EngineEvent event) {
