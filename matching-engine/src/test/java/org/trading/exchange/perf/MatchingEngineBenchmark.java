@@ -1,5 +1,7 @@
 package org.trading.exchange.perf;
 
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -125,18 +127,17 @@ public class MatchingEngineBenchmark {
     public static class CancelState {
 
         MatchingEngine engine;
-        String[] clientOrderIds;
-        int index = 0;
-        private static final int PRELOAD_SIZE = 10_000;
+        Queue<String> uncanceledOrders = new ConcurrentLinkedQueue<>();
+        private static final int PRELOAD_SIZE = 100_000;
 
         @Setup(Level.Trial)
         public void setupTrial() throws Exception {
             engine = new MatchingEngine(EngineMode.SYNC);
             engine.start();
-            clientOrderIds = new String[PRELOAD_SIZE];
+
             for (int i = 0; i < PRELOAD_SIZE; i++) {
                 String cid = "CANCEL-" + i;
-                clientOrderIds[i] = cid;
+                uncanceledOrders.offer(cid);
                 engine.submit(buildBuyLimit(cid, "AAPL", 150_00, 10));
             }
         }
@@ -147,7 +148,11 @@ public class MatchingEngineBenchmark {
         }
 
         String nextClientId() {
-            return clientOrderIds[index++ % clientOrderIds.length];
+            String cid = uncanceledOrders.poll();
+            if (cid == null) {
+                throw new IllegalStateException("No more orders to cancel");
+            }
+            return cid;
         }
     }
 
