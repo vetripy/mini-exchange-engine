@@ -1,7 +1,6 @@
 package org.trading.exchange.perf;
 
 import java.util.Queue;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -129,24 +128,32 @@ public class MatchingEngineBenchmark {
 
         MatchingEngine engine;
         Queue<String> cancelableOrderIds = new ConcurrentLinkedQueue<>();
+        AtomicLong idGenerator = new AtomicLong(0);
+
+        private static final int BATCH_SIZE = 100_000_00;
 
         @Setup(Level.Trial)
         public void setupTrial() throws Exception {
             engine = new MatchingEngine(EngineMode.SYNC);
             engine.start();
+        }
 
-            // Seed with 10k background orders for realistic book state
-            for (int i = 0; i < 10_000; i++) {
-                engine.submit(buildBuyLimit("SEED-" + i, "AAPL", 150_00 + i, 10));
+        @Setup(Level.Iteration)
+        public void setupIteration() throws Exception {
+            System.out.println("Pre-creating " + BATCH_SIZE + " cancelable orders...");
+
+            for (int i = 0; i < BATCH_SIZE; i++) {
+                String cid = "CANCEL-" + idGenerator.incrementAndGet();
+                engine.submit(buildBuyLimit(cid, "AAPL", 150_00 + (i % 100), 10));
+                cancelableOrderIds.offer(cid);
             }
         }
 
-        @Setup(Level.Invocation)
-        public void setupInvocation() throws Exception {
-            // Create a fresh order before each benchmark call
-            String cid = UUID.randomUUID().toString();
-            engine.submit(buildBuyLimit(cid, "AAPL", 150_00, 10));
-            cancelableOrderIds.offer(cid);
+        @TearDown(Level.Iteration)
+        public void tearDownIteration() {
+            int remaining = cancelableOrderIds.size();
+            System.out.println("Used: " + (BATCH_SIZE - remaining) + "/" + BATCH_SIZE);
+            cancelableOrderIds.clear();
         }
 
         @TearDown(Level.Trial)
@@ -155,6 +162,7 @@ public class MatchingEngineBenchmark {
         }
     }
 
+
     /**
      * Cancel path: Remove resting order from book. Measures: order lookup + book removal + map
      * cleanup.
@@ -162,6 +170,9 @@ public class MatchingEngineBenchmark {
     @Benchmark
     public void baseline_cancelOrder(CancelState s) throws InterruptedException {
         String cid = s.cancelableOrderIds.poll();
+        if (cid == null) {
+            throw new IllegalStateException("Ran out of orders");
+        }
         s.engine.submit(CancelOrderCommand.builder().clientOrderId(cid).build());
     }
 
