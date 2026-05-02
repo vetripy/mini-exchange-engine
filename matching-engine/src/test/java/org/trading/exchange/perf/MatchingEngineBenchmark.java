@@ -128,18 +128,33 @@ public class MatchingEngineBenchmark {
 
         MatchingEngine engine;
         Queue<String> uncanceledOrders = new ConcurrentLinkedQueue<>();
-        private static final int PRELOAD_SIZE = 100_000;
+        AtomicLong orderCounter = new AtomicLong(0);
+        private static final int ORDERS_PER_ITERATION = 1_000_000;  // 1M orders
 
         @Setup(Level.Trial)
         public void setupTrial() throws Exception {
             engine = new MatchingEngine(EngineMode.SYNC);
             engine.start();
+        }
 
-            for (int i = 0; i < PRELOAD_SIZE; i++) {
-                String cid = "CANCEL-" + i;
+        @Setup(Level.Iteration)
+        public void setupIteration() throws Exception {
+            // Replenish orders before each iteration
+            uncanceledOrders.clear();
+
+            for (int i = 0; i < ORDERS_PER_ITERATION; i++) {
+                long id = orderCounter.incrementAndGet();
+                String cid = "CANCEL-" + id;
                 uncanceledOrders.offer(cid);
-                engine.submit(buildBuyLimit(cid, "AAPL", 150_00, 10));
+                engine.submit(buildBuyLimit(cid, "AAPL", 150_00 + (i % 100), 10));
             }
+        }
+
+        @TearDown(Level.Iteration)
+        public void tearDownIteration() throws Exception {
+            // Optional: log how many were used
+            int remaining = uncanceledOrders.size();
+            System.out.println("Orders remaining: " + remaining + "/" + ORDERS_PER_ITERATION);
         }
 
         @TearDown(Level.Trial)
@@ -150,7 +165,8 @@ public class MatchingEngineBenchmark {
         String nextClientId() {
             String cid = uncanceledOrders.poll();
             if (cid == null) {
-                throw new IllegalStateException("No more orders to cancel");
+                throw new IllegalStateException(
+                    "No more orders to cancel - increase ORDERS_PER_ITERATION");
             }
             return cid;
         }
