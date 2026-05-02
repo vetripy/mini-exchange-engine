@@ -1,6 +1,7 @@
 package org.trading.exchange.perf;
 
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -123,52 +124,34 @@ public class MatchingEngineBenchmark {
     // CANCEL SCENARIOS - Pre-loaded orders for cancel path isolation
     // ==================================================================================
 
-    @State(Scope.Benchmark)
+    @State(Scope.Thread)
     public static class CancelState {
 
         MatchingEngine engine;
-        Queue<String> uncanceledOrders = new ConcurrentLinkedQueue<>();
-        AtomicLong orderCounter = new AtomicLong(0);
-        private static final int ORDERS_PER_ITERATION = 1_000_000;  // 1M orders
+        Queue<String> cancelableOrderIds = new ConcurrentLinkedQueue<>();
 
         @Setup(Level.Trial)
         public void setupTrial() throws Exception {
             engine = new MatchingEngine(EngineMode.SYNC);
             engine.start();
-        }
 
-        @Setup(Level.Iteration)
-        public void setupIteration() throws Exception {
-            // Replenish orders before each iteration
-            uncanceledOrders.clear();
-
-            for (int i = 0; i < ORDERS_PER_ITERATION; i++) {
-                long id = orderCounter.incrementAndGet();
-                String cid = "CANCEL-" + id;
-                uncanceledOrders.offer(cid);
-                engine.submit(buildBuyLimit(cid, "AAPL", 150_00 + (i % 100), 10));
+            // Seed with 10k background orders for realistic book state
+            for (int i = 0; i < 10_000; i++) {
+                engine.submit(buildBuyLimit("SEED-" + i, "AAPL", 150_00 + i, 10));
             }
         }
 
-        @TearDown(Level.Iteration)
-        public void tearDownIteration() throws Exception {
-            // Optional: log how many were used
-            int remaining = uncanceledOrders.size();
-            System.out.println("Orders remaining: " + remaining + "/" + ORDERS_PER_ITERATION);
+        @Setup(Level.Invocation)
+        public void setupInvocation() throws Exception {
+            // Create a fresh order before each benchmark call
+            String cid = UUID.randomUUID().toString();
+            engine.submit(buildBuyLimit(cid, "AAPL", 150_00, 10));
+            cancelableOrderIds.offer(cid);
         }
 
         @TearDown(Level.Trial)
         public void tearDownTrial() throws Exception {
             engine.stop();
-        }
-
-        String nextClientId() {
-            String cid = uncanceledOrders.poll();
-            if (cid == null) {
-                throw new IllegalStateException(
-                    "No more orders to cancel - increase ORDERS_PER_ITERATION");
-            }
-            return cid;
         }
     }
 
@@ -178,10 +161,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void baseline_cancelOrder(CancelState s) throws InterruptedException {
-        CancelOrderCommand cancel = CancelOrderCommand.builder()
-            .clientOrderId(s.nextClientId())
-            .build();
-        s.engine.submit(cancel);
+        String cid = s.cancelableOrderIds.poll();
+        s.engine.submit(CancelOrderCommand.builder().clientOrderId(cid).build());
     }
 
     // ==================================================================================
