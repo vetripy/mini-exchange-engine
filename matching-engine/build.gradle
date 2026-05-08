@@ -25,8 +25,8 @@ dependencies {
     runtimeOnly libs.logback.classic
     testImplementation 'org.openjdk.jmh:jmh-core:1.37'
     testImplementation 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
-    jmh 'org.openjdk.jmh:jmh-core:1.37'
-    jmh 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
+    jmh 'org.openjdk.jmh:jmh-core:1.23'
+    jmh 'org.openjdk.jmh:jmh-generator-annprocess:1.23'
 }
 
 spotless {
@@ -41,18 +41,33 @@ test {
 }
 
 jmh {
-    warmupIterations = 2
-    iterations = 2
-    fork = 2
+    // === WARMUP & MEASUREMENT ===
+    warmupIterations = 5
+    iterations = 10               // INCREASED: was 5, now 10
+    // 3 seconds per iteration (controlled by @Warmup/@Measurement annotations)
     timeUnit = 'us'
+
+    // === FORK STRATEGY ===
+    fork = 3                      // 3 independent JVMs
+
+    // === BENCHMARK MODES ===
     benchmarkMode = ['thrpt', 'avgt']
+
+    // === GC & JVM TUNING ===
     jvmArgsAppend = [
             '-XX:+UseG1GC',
             '-Xms2g',
             '-Xmx2g',
-            '-XX:+AlwaysPreTouch'
+            '-XX:+AlwaysPreTouch',
+            '-XX:MaxGCPauseMillis=5',              // REDUCED: 10 → 5
+            '-XX:G1HeapRegionSize=16M',            // NEW: explicit regions
+            '-XX:InitiatingHeapOccupancyPercent=25', // NEW: earlier concurrent GC
+            '-XX:G1ConcRefinementThreads=4',       // NEW: faster card marking
+            '-XX:+UseStringDeduplication',
+            '-XX:TieredStopAtLevel=4',             // NEW: force C2 JIT
+            '-XX:CompileThreshold=10000',          // NEW: faster compilation
+            '-Xlog:gc*:file=gc-%t.log:time,level,tags:filecount=5,filesize=100m'
     ]
-    // Optional filters — uncomment to run a subset:
+
     includes = ['baseline']
-    // excludes = ['async']
 }
