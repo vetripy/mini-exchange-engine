@@ -5,8 +5,8 @@ import static org.trading.exchange.util.OrderBookUtil.getOrderId;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -23,8 +23,9 @@ import org.trading.exchange.util.OrderBookUtil;
 @Slf4j
 public class OrderBook {
 
-    private final TreeMap<Long, Deque<Order>> buyOrders = new TreeMap<>(Comparator.reverseOrder());
-    private final TreeMap<Long, Deque<Order>> sellOrders = new TreeMap<>();
+    private final TreeMap<Long, LinkedHashSet<Order>> buyOrders = new TreeMap<>(
+        Comparator.reverseOrder());
+    private final TreeMap<Long, LinkedHashSet<Order>> sellOrders = new TreeMap<>();
     private final Map<String, Order> orderIndex = new HashMap<>();
 
     public List<EngineEvent> addOrder(Order order, long seq) {
@@ -47,9 +48,9 @@ public class OrderBook {
             throw new IllegalArgumentException("Order not found: " + orderId);
         }
 
-        TreeMap<Long, Deque<Order>> book =
+        TreeMap<Long, LinkedHashSet<Order>> book =
             order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
-        Deque<Order> queue = book.get(order.getPrice());
+        LinkedHashSet<Order> queue = book.get(order.getPrice());
 
         if (queue != null) {
             queue.remove(order);
@@ -98,16 +99,16 @@ public class OrderBook {
 
     private void matchBuyWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Entry<Long, Deque<Order>> entry = sellOrders.firstEntry();
-            Deque<Order> queue = entry.getValue();
-            Order sellOrder = queue.peek();
+            Entry<Long, LinkedHashSet<Order>> entry = sellOrders.firstEntry();
+            LinkedHashSet<Order> queue = entry.getValue();
+            Order sellOrder = queue.getFirst();
 
             if (checkPrice && (!(order.getPrice() >= sellOrder.getPrice()))) {
                 break;
             }
             executeTrade(sellOrder, order, ctx);
             if (sellOrder.getRemainingQuantity() == 0) {
-                queue.poll();
+                queue.remove(sellOrder);
                 orderIndex.remove(sellOrder.getOrderId());
                 if (queue.isEmpty()) {
                     sellOrders.pollFirstEntry();
@@ -119,9 +120,9 @@ public class OrderBook {
 
     private void matchSellWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Entry<Long, Deque<Order>> entry = buyOrders.firstEntry();
-            Deque<Order> queue = entry.getValue();
-            Order buyOrder = queue.peek();
+            Entry<Long, LinkedHashSet<Order>> entry = buyOrders.firstEntry();
+            LinkedHashSet<Order> queue = entry.getValue();
+            Order buyOrder = queue.getFirst();
 
             if (checkPrice && (!(order.getPrice() <= buyOrder.getPrice()))) {
                 break;
@@ -129,7 +130,7 @@ public class OrderBook {
 
             executeTrade(buyOrder, order, ctx);
             if (buyOrder.getRemainingQuantity() == 0) {
-                queue.poll();
+                queue.remove(buyOrder);
                 orderIndex.remove(buyOrder.getOrderId());
                 if (queue.isEmpty()) {
                     buyOrders.pollFirstEntry();
@@ -189,9 +190,9 @@ public class OrderBook {
         emitOrderUpdate(order, ctx);
     }
 
-    private void addToBook(TreeMap<Long, Deque<Order>> book, Order order) {
-        book.computeIfAbsent(order.getPrice(), k -> new java.util.ArrayDeque<>(20))
-            .offerLast(order);
+    private void addToBook(TreeMap<Long, LinkedHashSet<Order>> book, Order order) {
+        book.computeIfAbsent(order.getPrice(), k -> new LinkedHashSet<>(20))
+            .addLast(order);
         orderIndex.put(order.getOrderId(), order);
     }
 
@@ -264,7 +265,7 @@ public class OrderBook {
 
     public Map<Long, List<Order>> getBuySnapshot() {
         Map<Long, List<Order>> snapshot = new TreeMap<>(Comparator.reverseOrder());
-        for (Map.Entry<Long, Deque<Order>> entry : buyOrders.entrySet()) {
+        for (Map.Entry<Long, LinkedHashSet<Order>> entry : buyOrders.entrySet()) {
             snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
         }
         return snapshot;
@@ -272,7 +273,7 @@ public class OrderBook {
 
     public Map<Long, List<Order>> getSellSnapshot() {
         Map<Long, List<Order>> snapshot = new TreeMap<>();
-        for (Map.Entry<Long, Deque<Order>> entry : sellOrders.entrySet()) {
+        for (Map.Entry<Long, LinkedHashSet<Order>> entry : sellOrders.entrySet()) {
             snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
         }
         return snapshot;
