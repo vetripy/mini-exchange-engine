@@ -7,7 +7,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.trading.exchange.engine.command.CancelOrderCommand;
@@ -111,11 +110,19 @@ public class MatchingEngine {
 
     private void engineLoop() {
         while (this.state == EngineState.RUNNING) {
+            Envelope<EngineCommand> envelope = inboundEvents.poll();
+            if (envelope == null) {
+                // Queue empty, brief sleep to avoid busy-waiting
+                Thread.onSpinWait();  // or: Thread.yield()
+                continue;
+            }
             try {
-                Envelope<EngineCommand> envelope = inboundEvents.take();
                 process(envelope);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            } catch (IllegalArgumentException e) {
+                log.warn("Command rejected: {}", e.getMessage());
+            } catch (RuntimeException e) {
+                log.error("Unexpected exception in engine loop, failing engine", e);
+                failEngine(e);
                 break;
             }
         }
@@ -124,12 +131,13 @@ public class MatchingEngine {
     private void publishLoop() {
         try {
             while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
-                EngineEvent event = outboundEvents.take();
+                EngineEvent event = outboundEvents.poll();
+                if (event == null) {
+                    Thread.onSpinWait();
+                    continue;
+                }
                 publishDirect(event);
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            failEngine(e);
         } catch (Exception e) {
             failEngine(e);
         }
@@ -146,7 +154,7 @@ public class MatchingEngine {
         if (EngineMode.SYNC.equals(this.mode)) {
             process(envelope);
         } else {
-            boolean accepted = inboundEvents.offer(envelope, 100, TimeUnit.MILLISECONDS);
+            boolean accepted = inboundEvents.offer(envelope);
             if (!accepted) {
                 throw new IllegalStateException(
                     "Engine inbound queue full — apply backpressure upstream");
@@ -175,7 +183,6 @@ public class MatchingEngine {
             throw new IllegalArgumentException("Duplicate clientOrderId");
         }
         clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
-        log.debug("Processing new order: {} with sequence: {}", order, seq);
         OrderBook orderBook = books.get(order.getSymbol().name());
         List<EngineEvent> events = orderBook.addOrder(order, seq);
 
@@ -188,16 +195,13 @@ public class MatchingEngine {
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
         String orderId = cmd.getSymbol() + "-" + seq;
-        return Order.builder().orderId(orderId).clientOrderId(cmd.getClientOrderId())
-            .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol()))
-            .side(cmd.getSide()).type(cmd.getType()).price(cmd.getPrice())
-            .remainingQuantity(cmd.getQuantity()).build();
-
+        return new Order(orderId, cmd.getClientOrderId(), cmd.getUserId(),
+            Symbol.from(cmd.getSymbol()), cmd.getSide(), cmd.getType(), cmd.getPrice(),
+            cmd.getQuantity(), System.currentTimeMillis());
     }
 
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String clientOrderId = cancelOrderCommand.getClientOrderId();
-        log.debug("Processing cancel order: {} with sequence: {}", clientOrderId, seq);
 
         String orderId = clientIdToOrderId.get(cancelOrderCommand.getClientOrderId());
         if (orderId == null) {
@@ -229,7 +233,6 @@ public class MatchingEngine {
             try {
                 outboundEvents.put(event);
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
                 failEngine(e);
             }
         } else {
