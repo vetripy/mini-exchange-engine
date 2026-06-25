@@ -94,12 +94,12 @@ class MatchingEngineTest {
 
         TradeEvent tradeEvent = tradeListener.getTrades().getFirst();
 
-        assertEquals(100L, tradeEvent.getTradePrice());
-        assertEquals(5L, tradeEvent.getQuantity());
+        assertEquals(100L, tradeEvent.tradePrice());
+        assertEquals(5L, tradeEvent.quantity());
         assertEquals(((NewOrderCommand) buyCommand).getClientOrderId(),
-            tradeEvent.getBuyClientOrderId());
+            tradeEvent.buyClientOrderId());
         assertEquals(((NewOrderCommand) sellCommand).getClientOrderId(),
-            tradeEvent.getSellClientOrderId());
+            tradeEvent.sellClientOrderId());
     }
 
     @Test
@@ -125,15 +125,15 @@ class MatchingEngineTest {
         assertEquals(1, tradeListener.getTrades().size());
 
         TradeEvent tradeEvent = tradeListener.getTrades().getFirst();
-        assertEquals(4L, tradeEvent.getQuantity());
+        assertEquals(4L, tradeEvent.quantity());
 
         OrderUpdateEvent lastUpdate = orderUpdateListener.getUpdates().stream()
-            .filter(orderUpdate -> Objects.equals(orderUpdate.getClientOrderId(),
+            .filter(orderUpdate -> Objects.equals(orderUpdate.clientOrderId(),
                 ((NewOrderCommand) buyCommand).getClientOrderId()))
             .toList().getLast();
 
-        assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.getOrderState());
-        assertEquals(6L, lastUpdate.getRemainingQuantity());
+        assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.orderState());
+        assertEquals(6L, lastUpdate.remainingQuantity());
     }
 
     @Test
@@ -146,7 +146,7 @@ class MatchingEngineTest {
 
         OrderUpdateEvent last = orderUpdateListener.latest();
 
-        assertEquals(OrderState.CANCELLED, last.getOrderState());
+        assertEquals(OrderState.CANCELLED, last.orderState());
     }
 
     @Test
@@ -160,7 +160,7 @@ class MatchingEngineTest {
 
         List<Long> sequences = new ArrayList<>();
 
-        orderUpdateListener.getUpdates().forEach(u -> sequences.add(u.getSequence()));
+        orderUpdateListener.getUpdates().forEach(u -> sequences.add(u.sequence()));
 
         for (int i = 1; i < sequences.size(); i++) {
             assertTrue(sequences.get(i) >= sequences.get(i - 1));
@@ -181,7 +181,7 @@ class MatchingEngineTest {
         assertEquals(2, tradeListener.getTrades().size());
 
         long totalQuantity =
-            tradeListener.getTrades().stream().mapToLong(TradeEvent::getQuantity).sum();
+            tradeListener.getTrades().stream().mapToLong(TradeEvent::quantity).sum();
 
         assertEquals(5L, totalQuantity);
     }
@@ -213,7 +213,7 @@ class MatchingEngineTest {
         TradeEvent tradeEvent1 = tradeListener.getTrades().get(0);
         TradeEvent tradeEvent2 = tradeListener.getTrades().get(1);
 
-        assertEquals(Symbol.TEST1, tradeEvent1.getSymbol());
-        assertEquals(Symbol.TEST2, tradeEvent2.getSymbol());
+        assertEquals(Symbol.TEST1, tradeEvent1.symbol());
+        assertEquals(Symbol.TEST2, tradeEvent2.symbol());
     }
 }
