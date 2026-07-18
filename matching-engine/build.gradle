@@ -20,17 +20,17 @@ dependencies {
     testAnnotationProcessor libs.lombok
     testImplementation platform(libs.junit.bom)
     testImplementation libs.junit.jupiter
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly libs.junit.platform.launcher
     implementation libs.slf4j.api
     runtimeOnly libs.logback.classic
-    implementation 'org.agrona:agrona:2.4.1'
-    implementation 'com.lmax:disruptor:3.4.2'
-    testImplementation 'org.openjdk.jmh:jmh-core:1.37'
-    testImplementation 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
-    jmh 'org.openjdk.jmh:jmh-core:1.23'
-    jmh 'org.openjdk.jmh:jmh-generator-annprocess:1.23'
-    testImplementation 'com.google.guava:guava:33.0.0-jre'
-    testImplementation 'org.hdrhistogram:HdrHistogram:2.2.2'
+    implementation libs.agrona
+    implementation libs.disruptor
+    testImplementation libs.jmh.core
+    testImplementation libs.jmh.generator.annprocess
+    jmh libs.jmh.core
+    jmh libs.jmh.generator.annprocess
+    testImplementation libs.guava
+    testImplementation libs.hdrhistogram
 }
 
 spotless {
