@@ -12,27 +12,27 @@ public class DirectOutboundSink implements OutboundEventSink {
     private final List<OrderUpdateListener> orderUpdateListeners;
 
     public DirectOutboundSink(List<TradeListener> tradeListeners,
-        List<OrderUpdateListener> orderUpdateListeners) {
+                    List<OrderUpdateListener> orderUpdateListeners) {
         this.tradeListeners = tradeListeners;
         this.orderUpdateListeners = orderUpdateListeners;
     }
 
     @Override
     public void publishOrderUpdate(long sequence, long orderId, String clientOrderId,
-        OrderState state, Symbol symbol, long remainingQuantity, long timestamp) {
+                    OrderState state, Symbol symbol, long remainingQuantity, long timestamp) {
         OrderUpdateEvent event = new OrderUpdateEvent(sequence, orderId, clientOrderId, state,
-            symbol, remainingQuantity, timestamp);
+                        symbol, remainingQuantity, timestamp);
         for (OrderUpdateListener listener : orderUpdateListeners) {
             listener.onOrderUpdate(event);
         }
     }
 
     @Override
-    public void publishTrade(long sequence, long tradeId, long buyOrderId,
-        String buyClientOrderId, long sellOrderId, String sellClientOrderId,
-        Symbol symbol, long tradePrice, long quantity, long timestamp) {
+    public void publishTrade(long sequence, long tradeId, long buyOrderId, String buyClientOrderId,
+                    long sellOrderId, String sellClientOrderId, Symbol symbol, long tradePrice,
+                    long quantity, long timestamp) {
         TradeEvent event = new TradeEvent(sequence, tradeId, buyOrderId, buyClientOrderId,
-            sellOrderId, sellClientOrderId, symbol, tradePrice, quantity, timestamp);
+                        sellOrderId, sellClientOrderId, symbol, tradePrice, quantity, timestamp);
         for (TradeListener listener : tradeListeners) {
             listener.onTrade(event);
         }

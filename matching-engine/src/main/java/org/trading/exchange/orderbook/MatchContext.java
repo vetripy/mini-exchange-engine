@@ -22,14 +22,14 @@ public class MatchContext {
     }
 
     void emitOrderUpdate(long orderId, String clientOrderId, OrderState state, Symbol symbol,
-        long remainingQty, long timestamp) {
+                    long remainingQty, long timestamp) {
         sink.publishOrderUpdate(sequence, orderId, clientOrderId, state, symbol, remainingQty,
-            timestamp);
+                        timestamp);
     }
-    
+
     void emitTrade(long tradeId, long buyOrderId, String buyClientOrderId, long sellOrderId,
-        String sellClientOrderId, Symbol symbol, long price, long qty, long timestamp) {
+                    String sellClientOrderId, Symbol symbol, long price, long qty, long timestamp) {
         sink.publishTrade(sequence, tradeId, buyOrderId, buyClientOrderId, sellOrderId,
-            sellClientOrderId, symbol, price, qty, timestamp);
+                        sellClientOrderId, symbol, price, qty, timestamp);
     }
 }

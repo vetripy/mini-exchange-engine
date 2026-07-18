@@ -14,26 +14,26 @@ public class RingBufferOutboundSink implements OutboundEventSink {
 
     @Override
     public void publishOrderUpdate(long sequence, long orderId, String clientOrderId,
-        OrderState state, Symbol symbol, long remainingQuantity, long timestamp) {
+                    OrderState state, Symbol symbol, long remainingQuantity, long timestamp) {
         long ringSeq = ring.next();
         try {
             OutboundEvent event = ring.get(ringSeq);
             event.setAsOrderUpdate(sequence, orderId, clientOrderId, state, symbol,
-                remainingQuantity, timestamp);
+                            remainingQuantity, timestamp);
         } finally {
             ring.publish(ringSeq);
         }
     }
 
     @Override
-    public void publishTrade(long sequence, long tradeId, long buyOrderId,
-        String buyClientOrderId, long sellOrderId, String sellClientOrderId,
-        Symbol symbol, long tradePrice, long quantity, long timestamp) {
+    public void publishTrade(long sequence, long tradeId, long buyOrderId, String buyClientOrderId,
+                    long sellOrderId, String sellClientOrderId, Symbol symbol, long tradePrice,
+                    long quantity, long timestamp) {
         long ringSeq = ring.next();
         try {
             OutboundEvent event = ring.get(ringSeq);
             event.setAsTrade(sequence, tradeId, buyOrderId, buyClientOrderId, sellOrderId,
-                sellClientOrderId, symbol, tradePrice, quantity, timestamp);
+                            sellClientOrderId, symbol, tradePrice, quantity, timestamp);
         } finally {
             ring.publish(ringSeq);
         }

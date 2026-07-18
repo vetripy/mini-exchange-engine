@@ -55,15 +55,15 @@ public class MatchingEngine {
         this.inboundEvents = new ManyToOneConcurrentArrayQueue<>(100_000);
         this.sequencer = new Sequencer();
         this.disruptor = new Disruptor<>(new OutboundEventFactory(), 131_072, // ring capacity
-            DaemonThreadFactory.INSTANCE, // creates the consumer thread
-            ProducerType.SINGLE, // engine thread is the sole writer
-            new YieldingWaitStrategy() // low-latency but yields to scheduler
+                        DaemonThreadFactory.INSTANCE, // creates the consumer thread
+                        ProducerType.SINGLE, // engine thread is the sole writer
+                        new YieldingWaitStrategy() // low-latency but yields to scheduler
         );
         disruptor.handleEventsWith(new OutboundEventHandler(tradeListeners, orderUpdateListeners));
 
         OutboundEventSink sink = mode == EngineMode.ASYNC
-            ? new RingBufferOutboundSink(disruptor.getRingBuffer())
-            : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
+                        ? new RingBufferOutboundSink(disruptor.getRingBuffer())
+                        : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
 
         for (Symbol symbol : Symbol.values()) {
             books.put(symbol, new OrderBook(sink, clientIdToOrder::remove));
@@ -146,7 +146,7 @@ public class MatchingEngine {
             boolean accepted = inboundEvents.offer(envelope);
             if (!accepted) {
                 throw new IllegalStateException(
-                    "Engine inbound queue full — apply backpressure upstream");
+                                "Engine inbound queue full — apply backpressure upstream");
             }
         }
     }
@@ -179,8 +179,8 @@ public class MatchingEngine {
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
         return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), Symbol.from(cmd.getSymbol()),
-            cmd.getSide(), cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
-            System.currentTimeMillis());
+                        cmd.getSide(), cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
+                        System.currentTimeMillis());
     }
 
     private ProcessResult handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {

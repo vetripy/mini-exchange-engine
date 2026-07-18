@@ -2,9 +2,8 @@ package org.trading.exchange.engine;
 
 public enum ProcessResult {
 
-    ACCEPTED(null),
-    DUPLICATE_CLIENT_ORDER_ID("Duplicate clientOrderId"),
-    UNKNOWN_CLIENT_ORDER_ID("Unknown clientOrderId");
+    ACCEPTED(null), DUPLICATE_CLIENT_ORDER_ID("Duplicate clientOrderId"), UNKNOWN_CLIENT_ORDER_ID(
+                    "Unknown clientOrderId");
 
     private final String message;
 

@@ -22,7 +22,7 @@ import org.trading.exchange.util.OrderBookUtil;
 public class OrderBook {
 
     private final TreeMap<Long, ArrayDeque<Order>> buyOrders =
-        new TreeMap<>(Comparator.reverseOrder());
+                    new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, ArrayDeque<Order>> sellOrders = new TreeMap<>();
     private final Long2ObjectHashMap<Order> orderIndex = new Long2ObjectHashMap<>();
     private final MatchContext ctx;
@@ -58,7 +58,7 @@ public class OrderBook {
         }
 
         TreeMap<Long, ArrayDeque<Order>> book =
-            order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
+                        order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         ArrayDeque<Order> queue = book.get(order.getPrice());
 
         if (queue != null) {
@@ -163,8 +163,8 @@ public class OrderBook {
 
     private void handleFOK(Order order, MatchContext ctx) {
         boolean canFill = order.getSide() == OrderSide.BUY
-            ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
-            : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
+                        ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
+                        : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
@@ -199,7 +199,7 @@ public class OrderBook {
 
     private void executeTrade(Order restingOrder, Order matchingOrder, MatchContext ctx) {
         long tradeQuantity = Math.min(restingOrder.getRemainingQuantity(),
-            matchingOrder.getRemainingQuantity());
+                        matchingOrder.getRemainingQuantity());
         restingOrder.reduceQuantity(tradeQuantity);
         matchingOrder.reduceQuantity(tradeQuantity);
         long tradePrice = restingOrder.getPrice();
@@ -241,22 +241,22 @@ public class OrderBook {
 
     private void emitOrderUpdate(Order order, MatchContext ctx) {
         ctx.emitOrderUpdate(order.getOrderId(), order.getClientOrderId(), order.getState(),
-            order.getSymbol(), order.getRemainingQuantity(), order.getTimestamp());
+                        order.getSymbol(), order.getRemainingQuantity(), order.getTimestamp());
         if (order.getState().isTerminal()) {
             onOrderTerminated.accept(order.getClientOrderId());
         }
     }
 
     private void emitTrade(Order restingOrder, Order matchingOrder, long price, long quantity,
-        MatchContext ctx) {
+                    MatchContext ctx) {
         long buyOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         long sellOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.SELL);
         String buyClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         String sellClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.SELL);
 
         ctx.emitTrade(++tradeIdCounter, buyOrderId, buyClientOrderId, sellOrderId,
-            sellClientOrderId, restingOrder.getSymbol(), price, quantity,
-            matchingOrder.getTimestamp());
+                        sellClientOrderId, restingOrder.getSymbol(), price, quantity,
+                        matchingOrder.getTimestamp());
     }
 
     public Map<Long, List<Order>> getBuySnapshot() {

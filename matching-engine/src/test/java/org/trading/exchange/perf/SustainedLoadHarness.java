@@ -83,8 +83,7 @@ import org.trading.exchange.orderbook.OrderBook;
 @Disabled
 public final class SustainedLoadHarness {
 
-    private SustainedLoadHarness() {
-    }
+    private SustainedLoadHarness() {}
 
     // --- Run timing ---
     // 25s, not 15: the first run showed inbound spiking to ~19k around t=13s (C2 compiling under
@@ -140,11 +139,11 @@ public final class SustainedLoadHarness {
 
     static void runAt(long targetRatePerSec) throws Exception {
         System.out.printf("=== Sustained load @ %,d orders/sec  (%d producers) ===%n",
-            targetRatePerSec, PRODUCER_THREADS);
+                        targetRatePerSec, PRODUCER_THREADS);
         System.out.printf(
-            "Mix: IOC=%.0f%%  LIMIT=%.0f%%  CANCEL=%.0f%%   IOC_QTY=%d  BOOK_QTY=%d%n",
-            IOC_RATIO * 100, LIMIT_RATIO * 100, CANCEL_RATIO * 100, IOC_QTY,
-            BOOK_ORDER_QTY);
+                        "Mix: IOC=%.0f%%  LIMIT=%.0f%%  CANCEL=%.0f%%   IOC_QTY=%d  BOOK_QTY=%d%n",
+                        IOC_RATIO * 100, LIMIT_RATIO * 100, CANCEL_RATIO * 100, IOC_QTY,
+                        BOOK_ORDER_QTY);
 
         MatchingEngine engine = new MatchingEngine(EngineMode.ASYNC);
 
@@ -154,7 +153,7 @@ public final class SustainedLoadHarness {
             if (now == EngineState.FAILED) {
                 terminalState.set(now);
                 System.err.println(
-                    "ENGINE FAILED mid-run: " + (cause == null ? "(no cause)" : cause));
+                                "ENGINE FAILED mid-run: " + (cause == null ? "(no cause)" : cause));
             }
         });
 
@@ -175,7 +174,7 @@ public final class SustainedLoadHarness {
         // Warmup ('W') orders are intentionally not tracked; steering on the measured-phase net is
         // enough to keep total depth bounded and non-empty.
         java.util.concurrent.atomic.AtomicLong approxRestingDepth =
-            new java.util.concurrent.atomic.AtomicLong(0);
+                        new java.util.concurrent.atomic.AtomicLong(0);
 
         Histogram earlyHist = new Histogram(1, MAX_TRACKABLE_NANOS, SIGNIFICANT_DIGITS);
         Histogram lateHist = new Histogram(1, MAX_TRACKABLE_NANOS, SIGNIFICANT_DIGITS);
@@ -233,7 +232,7 @@ public final class SustainedLoadHarness {
         waitForBookDepth(refl, targetDepth, BOOK_WARMUP_TIMEOUT_SECONDS);
         int[] d = refl.bookDepth();
         System.out.printf("Book depth after warmup: buy=%,d  sell=%,d  total=%,d%n", d[0], d[1],
-            d[0] + d[1]);
+                        d[0] + d[1]);
 
         // Clean slate for the measured phase: drop any warmup garbage so heap growth we observe is
         // attributable to the measured window, not to stage-1 leftovers.
@@ -253,7 +252,7 @@ public final class SustainedLoadHarness {
         long phaseStart = System.nanoTime();
         win.measureStartNanos = phaseStart + TimeUnit.SECONDS.toNanos(WARMUP_SECONDS);
         win.lateStartNanos = phaseStart
-            + TimeUnit.SECONDS.toNanos(WARMUP_SECONDS + MEASURE_SECONDS * 2L / 3);
+                        + TimeUnit.SECONDS.toNanos(WARMUP_SECONDS + MEASURE_SECONDS * 2L / 3);
         long endNanos = phaseStart + TimeUnit.SECONDS.toNanos(WARMUP_SECONDS + MEASURE_SECONDS);
 
         int perThreadRate = Math.max(1, (int) (targetRatePerSec / PRODUCER_THREADS));
@@ -267,9 +266,9 @@ public final class SustainedLoadHarness {
             pstats[t] = ps;
             final int idx = t;
             producers[t] = new Thread(
-                () -> produce(engine, idx, intervalNanos, endNanos, intendedByClientId,
-                    approxRestingDepth, terminalState, ps, done),
-                "load-producer-" + t);
+                            () -> produce(engine, idx, intervalNanos, endNanos, intendedByClientId,
+                                            approxRestingDepth, terminalState, ps, done),
+                            "load-producer-" + t);
         }
         for (Thread p : producers) {
             p.start();
@@ -286,19 +285,19 @@ public final class SustainedLoadHarness {
         full.add(lateHist);
 
         report(targetRatePerSec,
-            TimeUnit.SECONDS.toSeconds(TimeUnit.NANOSECONDS
-                .toSeconds(System.nanoTime() - phaseStart)),
-            pstats, lstats, inFlight, terminalState.get(), full, earlyHist, lateHist,
-            sampler);
+                        TimeUnit.SECONDS.toSeconds(TimeUnit.NANOSECONDS
+                                        .toSeconds(System.nanoTime() - phaseStart)),
+                        pstats, lstats, inFlight, terminalState.get(), full, earlyHist, lateHist,
+                        sampler);
     }
 
     // ----------------------------- producer -----------------------------
 
     private static void produce(MatchingEngine engine, int threadIdx, double intervalNanos,
-        long endNanos, ConcurrentHashMap<String, Long> intendedByClientId,
-        java.util.concurrent.atomic.AtomicLong approxRestingDepth,
-        AtomicReference<EngineState> terminalState, ProducerStats ps,
-        CountDownLatch done) {
+                    long endNanos, ConcurrentHashMap<String, Long> intendedByClientId,
+                    java.util.concurrent.atomic.AtomicLong approxRestingDepth,
+                    AtomicReference<EngineState> terminalState, ProducerStats ps,
+                    CountDownLatch done) {
 
         // Bounded, thread-local cancel-target ring. Overwrite-oldest: no growth, no contention.
         String[] ring = new String[RING_SIZE];
@@ -368,8 +367,8 @@ public final class SustainedLoadHarness {
                         long price = buy ? MID_PRICE + PRICE_LEVELS : MID_PRICE - PRICE_LEVELS;
                         intendedByClientId.put(cid, intendedNanos);
                         engine.submit(NewOrderCommand.of(cid, SYMBOL,
-                            buy ? OrderSide.BUY : OrderSide.SELL, OrderType.IOC,
-                            "lt-" + threadIdx, price, IOC_QTY, intendedNanos));
+                                        buy ? OrderSide.BUY : OrderSide.SELL, OrderType.IOC,
+                                        "lt-" + threadIdx, price, IOC_QTY, intendedNanos));
                         ps.iocSent++;
                     } else {
                         String cid = "L-" + threadIdx + "-" + counter;
@@ -379,8 +378,8 @@ public final class SustainedLoadHarness {
                         long price = buy ? MID_PRICE - level : MID_PRICE + level; // own side: rests
                         intendedByClientId.put(cid, intendedNanos);
                         engine.submit(NewOrderCommand.of(cid, SYMBOL,
-                            buy ? OrderSide.BUY : OrderSide.SELL, OrderType.LIMIT,
-                            "lt-" + threadIdx, price, BOOK_ORDER_QTY, intendedNanos));
+                                        buy ? OrderSide.BUY : OrderSide.SELL, OrderType.LIMIT,
+                                        "lt-" + threadIdx, price, BOOK_ORDER_QTY, intendedNanos));
                         ps.limitSent++;
                         approxRestingDepth.incrementAndGet(); // priced non-crossing -> always rests
                         ring[(int) (ringCursor++ & RING_MASK)] = cid; // becomes a future cancel
@@ -423,20 +422,20 @@ public final class SustainedLoadHarness {
     }
 
     private static void submitWarmup(MatchingEngine engine, String cid, OrderSide side, long price)
-        throws InterruptedException {
+                    throws InterruptedException {
         // Untimed: warmup orders are never inserted into the correlation map, so their acks land as
         // non-attributable and are ignored by the latency stats.
         try {
             engine.submit(NewOrderCommand.of(cid, SYMBOL, side, OrderType.LIMIT, "warmup", price,
-                BOOK_ORDER_QTY, System.nanoTime()));
+                            BOOK_ORDER_QTY, System.nanoTime()));
         } catch (IllegalStateException e) {
             System.out.println("WARNING: backpressure during warmup — inbound full before measured "
-                + "load. Lower TARGET_RESTING_PER_LEVEL.");
+                            + "load. Lower TARGET_RESTING_PER_LEVEL.");
         }
     }
 
     private static void waitForBookDepth(EngineReflection refl, long target, long timeoutSeconds)
-        throws InterruptedException {
+                    throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
         while (System.nanoTime() < deadline) {
             int[] depth = refl.bookDepth();
@@ -447,8 +446,8 @@ public final class SustainedLoadHarness {
         }
         int[] finalDepth = refl.bookDepth();
         System.out.printf(
-            "WARNING: warmup reached only %,d of target %,d within %ds — proceeding.%n",
-            finalDepth[0] + finalDepth[1], target, timeoutSeconds);
+                        "WARNING: warmup reached only %,d of target %,d within %ds — proceeding.%n",
+                        finalDepth[0] + finalDepth[1], target, timeoutSeconds);
     }
 
     private static CancelOrderCommand buildCancel(String clientOrderId) {
@@ -461,8 +460,8 @@ public final class SustainedLoadHarness {
     // ----------------------------- reporting -----------------------------
 
     private static void report(long targetRate, long elapsedSec, ProducerStats[] pstats,
-        ListenerStats lstats, long inFlight, EngineState terminal, Histogram full,
-        Histogram early, Histogram late, Sampler sampler) {
+                    ListenerStats lstats, long inFlight, EngineState terminal, Histogram full,
+                    Histogram early, Histogram late, Sampler sampler) {
 
         long submitted = 0, ioc = 0, limit = 0, cancel = 0, fails = 0;
         for (ProducerStats p : pstats) {
@@ -477,21 +476,21 @@ public final class SustainedLoadHarness {
         System.out.println("\n=== RESULTS ===");
         if (terminal == EngineState.FAILED) {
             System.out.println("*** ENGINE ENTERED FAILED STATE DURING THE RUN — numbers below are "
-                + "partial. Most likely the outbound queue filled (publisher could not keep up) and "
-                + "the offer()/fail-on-full policy halted the engine. Increase outbound capacity or "
-                + "lighten the publisher before trusting a verdict. ***");
+                            + "partial. Most likely the outbound queue filled (publisher could not keep up) and "
+                            + "the offer()/fail-on-full policy halted the engine. Increase outbound capacity or "
+                            + "lighten the publisher before trusting a verdict. ***");
         }
         System.out.printf("Target rate:          %,d /sec%n", targetRate);
         System.out.printf("Submitted:            %,d  (IOC=%,d  LIMIT=%,d  CANCEL=%,d)%n",
-            submitted, ioc, limit, cancel);
+                        submitted, ioc, limit, cancel);
         System.out.printf("Submit failures:      %,d  (bounded-inbound backpressure)%n", fails);
         System.out.printf("Achieved submit rate: %,d /sec (incl. warmup phase)%n",
-            submitted / secs);
+                        submitted / secs);
         System.out.printf(
-            "Latency samples:      %,d  (non-attributable=%,d  pre-window=%,d  neg-clamped=%,d)%n",
-            lstats.recorded, lstats.nonAttributable, lstats.preWindow, lstats.negative);
+                        "Latency samples:      %,d  (non-attributable=%,d  pre-window=%,d  neg-clamped=%,d)%n",
+                        lstats.recorded, lstats.nonAttributable, lstats.preWindow, lstats.negative);
         System.out.printf("In-flight at end:     %,d  (acks that never arrived == real backlog)%n",
-            inFlight);
+                        inFlight);
 
         System.out.println("\n--- Latency: intended-submit -> publish (whole measured window) ---");
         printHist(full);
@@ -513,32 +512,32 @@ public final class SustainedLoadHarness {
             return;
         }
         System.out.printf("  count=%,d  p50=%,dus  p90=%,dus  p99=%,dus  p99.9=%,dus  max=%,dus%n",
-            h.getTotalCount(),
-            TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(50)),
-            TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(90)),
-            TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(99)),
-            TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(99.9)),
-            TimeUnit.NANOSECONDS.toMicros(h.getMaxValue()));
+                        h.getTotalCount(),
+                        TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(50)),
+                        TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(90)),
+                        TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(99)),
+                        TimeUnit.NANOSECONDS.toMicros(h.getValueAtPercentile(99.9)),
+                        TimeUnit.NANOSECONDS.toMicros(h.getMaxValue()));
     }
 
     private static void verdict(EngineState terminal, long fails, long inFlight, long submitted,
-        Histogram early, Histogram late, Sampler sampler) {
+                    Histogram early, Histogram late, Sampler sampler) {
         if (terminal == EngineState.FAILED) {
             System.out.println(
-                "FAIL: engine failed mid-run (see note above). Not a valid ceiling.");
+                            "FAIL: engine failed mid-run (see note above). Not a valid ceiling.");
             return;
         }
         if (fails > 0) {
             System.out.printf(
-                "FAIL: %,d backpressure rejections — inbound saturated at this rate.%n",
-                fails);
+                            "FAIL: %,d backpressure rejections — inbound saturated at this rate.%n",
+                            fails);
             return;
         }
         double inFlightRatio = submitted == 0 ? 0 : (double) inFlight / submitted;
         if (inFlightRatio > 0.02) {
             System.out.printf(
-                "FAIL: %,d orders (%.1f%%) unprocessed at end — engine fell behind.%n",
-                inFlight, inFlightRatio * 100);
+                            "FAIL: %,d orders (%.1f%%) unprocessed at end — engine fell behind.%n",
+                            inFlight, inFlightRatio * 100);
             return;
         }
         if (early.getTotalCount() == 0 || late.getTotalCount() == 0) {
@@ -555,26 +554,26 @@ public final class SustainedLoadHarness {
         System.out.printf("book trend:  %s%n", bookGrowing ? "GROWING" : "stable");
         if (bookGrowing) {
             System.out.println(
-                "INCONCLUSIVE: the book is still trending up, so this is a book-growth "
-                    + "run, not a clean engine measurement — the latency tail is very likely a GC/book-"
-                    + "growth artifact. Retune the mix (raise IOC_RATIO/IOC_QTY, keep LIMITs clustered "
-                    + "near the touch, or raise CANCEL_RATIO) until the book trend reads 'stable' BEFORE "
-                    + "trusting any latency verdict.");
+                            "INCONCLUSIVE: the book is still trending up, so this is a book-growth "
+                                            + "run, not a clean engine measurement — the latency tail is very likely a GC/book-"
+                                            + "growth artifact. Retune the mix (raise IOC_RATIO/IOC_QTY, keep LIMITs clustered "
+                                            + "near the touch, or raise CANCEL_RATIO) until the book trend reads 'stable' BEFORE "
+                                            + "trusting any latency verdict.");
             return;
         }
         if (queueGrowing) {
             System.out.println("UNSUSTAINABLE (throughput): queue depth trending up — the engine "
-                + "cannot keep pace at this rate. Lower it.");
+                            + "cannot keep pace at this rate. Lower it.");
         } else if (ratio > 1.5) {
             System.out.printf(
-                "THROUGHPUT SUSTAINED (queue bounded, in-flight ~0, no rejections) but "
-                    + "LATENCY DEGRADING: late p99 is %.2fx early. With the book stable, a growing tail "
-                    + "on a flat median is the GC pause signature, not matching cost — attack allocation "
-                    + "(O-003 events / constructor pattern / Disruptor), not the algorithm.%n",
-                ratio);
+                            "THROUGHPUT SUSTAINED (queue bounded, in-flight ~0, no rejections) but "
+                                            + "LATENCY DEGRADING: late p99 is %.2fx early. With the book stable, a growing tail "
+                                            + "on a flat median is the GC pause signature, not matching cost — attack allocation "
+                                            + "(O-003 events / constructor pattern / Disruptor), not the algorithm.%n",
+                            ratio);
         } else {
             System.out.println(
-                "SUSTAINABLE: latency flat, queue bounded, book stable. Try a higher rate.");
+                            "SUSTAINABLE: latency flat, queue bounded, book stable. Try a higher rate.");
         }
     }
 
@@ -643,7 +642,7 @@ public final class SustainedLoadHarness {
                 disruptorField.setAccessible(true);
             } catch (ReflectiveOperationException e) {
                 throw new RuntimeException("Reflection target changed — update EngineReflection",
-                    e);
+                                e);
             }
         }
 
@@ -659,7 +658,7 @@ public final class SustainedLoadHarness {
             for (List<Order> os : orderBook.getSellSnapshot().values()) {
                 sell += os.size();
             }
-            return new int[]{buy, sell};
+            return new int[] {buy, sell};
         }
 
         int[] queueDepth() {
@@ -667,11 +666,11 @@ public final class SustainedLoadHarness {
             // is safe to read from this thread.
             Queue<?> inbound = (Queue<?>) get(inboundField);
             com.lmax.disruptor.dsl.Disruptor<?> disruptor =
-                (com.lmax.disruptor.dsl.Disruptor<?>) get(disruptorField);
+                            (com.lmax.disruptor.dsl.Disruptor<?>) get(disruptorField);
             com.lmax.disruptor.RingBuffer<?> outboundRing = disruptor.getRingBuffer();
             int outboundDepth =
-                (int) (outboundRing.getBufferSize() - outboundRing.remainingCapacity());
-            return new int[]{inbound.size(), outboundDepth};
+                            (int) (outboundRing.getBufferSize() - outboundRing.remainingCapacity());
+            return new int[] {inbound.size(), outboundDepth};
         }
 
         private Object get(Field f) {
@@ -692,7 +691,7 @@ public final class SustainedLoadHarness {
         private final long start = System.nanoTime();
         // rows: {tMs, inbound, outbound, bookBuy, bookSell}. Written by the single sampler thread.
         private final java.util.List<long[]> rows =
-            new java.util.concurrent.CopyOnWriteArrayList<>();
+                        new java.util.concurrent.CopyOnWriteArrayList<>();
 
         Sampler(EngineReflection refl, java.util.concurrent.atomic.AtomicLong depthAnchor) {
             this.refl = refl;
@@ -704,7 +703,7 @@ public final class SustainedLoadHarness {
                 int[] q = refl.queueDepth();
                 int[] b = refl.bookDepth();
                 long tMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-                rows.add(new long[]{tMs, q[0], q[1], b[0], b[1]});
+                rows.add(new long[] {tMs, q[0], q[1], b[0], b[1]});
                 // Re-anchor the steering counter to ground truth. The event-driven counter
                 // (+LIMIT / -terminal) is fine-grained but drifts if the publisher lags and the
                 // listener stops firing — that drift once ran the counter above DEPTH_HIGH and
@@ -765,7 +764,7 @@ public final class SustainedLoadHarness {
             for (int i = 0; i < n; i += step) {
                 long[] s = rows.get(i);
                 System.out.printf("  %-9d %-8d %-9d %-8d %-9d %,d%n", s[0], s[1], s[2], s[3], s[4],
-                    s[3] + s[4]);
+                                s[3] + s[4]);
             }
         }
     }
