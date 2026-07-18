@@ -1,40 +1,41 @@
 package org.trading.exchange.engine;
 
+import com.lmax.disruptor.YieldingWaitStrategy;
+import com.lmax.disruptor.dsl.Disruptor;
+import com.lmax.disruptor.dsl.ProducerType;
+import com.lmax.disruptor.util.DaemonThreadFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingQueue;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
+import org.agrona.concurrent.ManyToOneConcurrentArrayQueue;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
-import org.trading.exchange.event.EngineEvent;
-import org.trading.exchange.event.OrderUpdateEvent;
-import org.trading.exchange.event.TradeEvent;
+import org.trading.exchange.event.DirectOutboundSink;
+import org.trading.exchange.event.OutboundEvent;
+import org.trading.exchange.event.OutboundEventFactory;
+import org.trading.exchange.event.OutboundEventHandler;
+import org.trading.exchange.event.OutboundEventSink;
+import org.trading.exchange.event.RingBufferOutboundSink;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
-import org.trading.exchange.model.Envelope;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.Symbol;
 import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
-import org.trading.exchange.util.EnvelopeUtil;
 import org.trading.exchange.validators.OrderValidator;
 
-@Slf4j
 public class MatchingEngine {
 
-    private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
-    private final BlockingQueue<EngineEvent> outboundEvents;
+    private final ManyToOneConcurrentArrayQueue<EngineCommand> inboundEvents;
+    private final Disruptor<OutboundEvent> disruptor;
     private final Sequencer sequencer;
-    private final Map<String, String> clientIdToOrderId = new HashMap<>();
-    private final Map<String, OrderBook> books = new HashMap<>();
+    private final Map<String, Order> clientIdToOrder = new HashMap<>();
+    private final Map<Symbol, OrderBook> books = new HashMap<>();
     private final OrderValidator orderValidator = new OrderValidator();
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
@@ -45,16 +46,25 @@ public class MatchingEngine {
     @Getter
     private volatile EngineState state;
     private Thread engineThread;
-    private Thread publisherThread;
 
     public MatchingEngine(EngineMode mode) {
         this.mode = mode;
         this.state = EngineState.NEW;
-        this.inboundEvents = new LinkedBlockingQueue<>();
+        this.inboundEvents = new ManyToOneConcurrentArrayQueue<>(100_000);
         this.sequencer = new Sequencer();
-        this.outboundEvents = new ArrayBlockingQueue<>(10_000);
+        this.disruptor = new Disruptor<>(new OutboundEventFactory(), 131_072, // ring capacity
+                        DaemonThreadFactory.INSTANCE, // creates the consumer thread
+                        ProducerType.SINGLE, // engine thread is the sole writer
+                        new YieldingWaitStrategy() // low-latency but yields to scheduler
+        );
+        disruptor.handleEventsWith(new OutboundEventHandler(tradeListeners, orderUpdateListeners));
+
+        OutboundEventSink sink = mode == EngineMode.ASYNC
+                        ? new RingBufferOutboundSink(disruptor.getRingBuffer())
+                        : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
+
         for (Symbol symbol : Symbol.values()) {
-            books.put(symbol.name(), new OrderBook());
+            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove));
         }
     }
 
@@ -69,54 +79,51 @@ public class MatchingEngine {
             engineThread = new Thread(this::engineLoop, "engine-thread");
             engineThread.start();
 
-            publisherThread = new Thread(this::publishLoop, "publisher-thread");
-            publisherThread.start();
+            disruptor.start();
         }
     }
 
-    public synchronized void stop() throws InterruptedException {
-        if (this.state != EngineState.RUNNING) {
-            throw new IllegalStateException("Engine not running");
+    public synchronized void stop() {
+        if (this.state != EngineState.RUNNING && this.state != EngineState.FAILED) {
+            throw new IllegalStateException("Engine cannot be stopped from state: " + this.state);
         }
 
-        transitionTo(EngineState.STOPPING, null);
+        if (this.state == EngineState.RUNNING) {
+            transitionTo(EngineState.STOPPING, null);
+        }
 
         if (engineThread != null) {
             engineThread.interrupt();
-            engineThread.join();
+            try {
+                engineThread.join(5000); // 5 second timeout
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
 
-        transitionTo(EngineState.STOPPED, null);
+        if (mode == EngineMode.ASYNC) {
+            disruptor.shutdown();
+        }
 
-        if (publisherThread != null) {
-            publisherThread.interrupt();
-            publisherThread.join();
+        if (this.state != EngineState.STOPPED) {
+            transitionTo(EngineState.STOPPED, null);
         }
     }
 
     private void engineLoop() {
         while (this.state == EngineState.RUNNING) {
+            EngineCommand command = inboundEvents.poll();
+            if (command == null) {
+                // Queue empty, brief sleep to avoid busy-waiting
+                Thread.onSpinWait(); // or: Thread.yield()
+                continue;
+            }
             try {
-                Envelope<EngineCommand> envelope = inboundEvents.take();
-                process(envelope);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                process(command); // rejects are a return code now; nothing to catch for them
+            } catch (RuntimeException e) {
+                failEngine(e);
                 break;
             }
-        }
-    }
-
-    private void publishLoop() {
-        try {
-            while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
-                EngineEvent event = outboundEvents.take();
-                publishDirect(event);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            failEngine(e);
-        } catch (Exception e) {
-            failEngine(e);
         }
     }
 
@@ -125,91 +132,67 @@ public class MatchingEngine {
             throw new IllegalStateException("Engine is not running");
         }
 
-        long seq = sequencer.getNextSequence();
-        Envelope<EngineCommand> envelope = EnvelopeUtil.wrap(seq, command);
+        command.setSequence(sequencer.getNextSequence());
 
         if (EngineMode.SYNC.equals(this.mode)) {
-            process(envelope);
+            ProcessResult result = process(command);
+            if (result.isRejected()) {
+                throw new IllegalArgumentException(result.message());
+            }
         } else {
-            inboundEvents.put(envelope);
+            boolean accepted = inboundEvents.offer(command);
+            if (!accepted) {
+                throw new IllegalStateException(
+                                "Engine inbound queue full — apply backpressure upstream");
+            }
         }
     }
 
-    private void process(Envelope<EngineCommand> event) {
-        EngineCommand command = EnvelopeUtil.unwrap(event);
-        long seq = event.sequence();
+    private ProcessResult process(EngineCommand command) {
+        long seq = command.getSequence();
 
-        switch (command) {
+        return switch (command) {
             case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
             case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
             default -> throw new IllegalStateException("Unsupported engine command: " + command);
-        }
+        };
     }
 
-    private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
+    private ProcessResult handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
         Order order = buildOrderFromCommand(newOrderCommand, seq);
 
         orderValidator.validateInvariants(order);
 
-        // thread safe since orders are only added in the engine thread (single threaded)
-        if (clientIdToOrderId.containsKey(order.getClientOrderId())) {
-            throw new IllegalArgumentException("Duplicate clientOrderId");
+        if (clientIdToOrder.putIfAbsent(order.getClientOrderId(), order) != null) {
+            return ProcessResult.DUPLICATE_CLIENT_ORDER_ID;
         }
-        clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
-        log.info("Processing new order: {} with sequence: {}", order, seq);
-        OrderBook orderBook = books.get(order.getSymbol().name());
-        List<EngineEvent> events = orderBook.addOrder(order, seq);
-        events.forEach(this::handleOutbound);
+        OrderBook orderBook = books.get(order.getSymbol());
+        // clientIdToOrder cleanup (for this order AND any resting counterparties it fills) is
+        // driven by OrderBook's onOrderTerminated callback, not here.
+        orderBook.addOrder(order, seq);
+        return ProcessResult.ACCEPTED;
     }
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
-        String orderId = cmd.getSymbol() + "-" + seq;
-        return Order.builder().orderId(orderId).clientOrderId(cmd.getClientOrderId())
-                        .userId(cmd.getUserId()).symbol(Symbol.from(cmd.getSymbol()))
-                        .side(cmd.getSide()).type(cmd.getType()).price(cmd.getPrice())
-                        .remainingQuantity(cmd.getQuantity()).build();
-
+        return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), Symbol.from(cmd.getSymbol()),
+                        cmd.getSide(), cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
+                        System.currentTimeMillis());
     }
 
-    private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
+    private ProcessResult handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String clientOrderId = cancelOrderCommand.getClientOrderId();
-        log.info("Processing cancel order: {} with sequence: {}", clientOrderId, seq);
 
-        String orderId = clientIdToOrderId.get(cancelOrderCommand.getClientOrderId());
-        if (orderId == null) {
-            throw new IllegalArgumentException("Unknown clientOrderId");
+        Order order = clientIdToOrder.get(clientOrderId);
+        if (order == null) {
+            return ProcessResult.UNKNOWN_CLIENT_ORDER_ID;
         }
-        String symbol = parseSymbolFromOrderId(orderId);
 
-        OrderBook orderBook = books.get(Symbol.from(symbol).name());
-        List<EngineEvent> events = orderBook.cancelOrder(orderId, seq);
-        events.forEach(this::handleOutbound);
-    }
-
-    private String parseSymbolFromOrderId(String orderId) {
-        return orderId.split("-")[0];
-    }
-
-    private void publishDirect(EngineEvent engineEvent) {
-        switch (engineEvent) {
-            case TradeEvent event -> tradeListeners.forEach(l -> l.onTrade(event));
-            case OrderUpdateEvent event ->
-                orderUpdateListeners.forEach(l -> l.onOrderUpdate(event));
-            default -> throw new IllegalStateException("Unsupported engine event: " + engineEvent);
+        OrderBook orderBook = books.get(order.getSymbol());
+        // clientIdToOrder cleanup happens via OrderBook's onOrderTerminated callback, not here.
+        if (!orderBook.cancelOrder(order.getOrderId(), seq)) {
+            return ProcessResult.UNKNOWN_CLIENT_ORDER_ID;
         }
-    }
-
-    private void handleOutbound(EngineEvent event) {
-        if (mode == EngineMode.ASYNC) {
-            try {
-                outboundEvents.put(event);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                failEngine(e);
-            }
-        } else {
-            publishDirect(event);
-        }
+        return ProcessResult.ACCEPTED;
     }
 
     private void failEngine(Throwable cause) {
@@ -225,9 +208,6 @@ public class MatchingEngine {
             engineThread.interrupt();
         }
 
-        if (publisherThread != null) {
-            publisherThread.interrupt();
-        }
     }
 
     private synchronized void transitionTo(EngineState newState, Throwable cause) {
