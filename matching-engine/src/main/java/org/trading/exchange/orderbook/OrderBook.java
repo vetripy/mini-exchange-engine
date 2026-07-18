@@ -11,21 +11,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
-import lombok.extern.slf4j.Slf4j;
+import org.trading.exchange.event.DirectOutboundSink;
+import org.trading.exchange.event.OutboundEventSink;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderSide;
 import org.trading.exchange.model.OrderState;
 import org.trading.exchange.util.OrderBookUtil;
 
-@Slf4j
 public class OrderBook {
 
     private final TreeMap<Long, ArrayDeque<Order>> buyOrders =
-                    new TreeMap<>(Comparator.reverseOrder());
+        new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, ArrayDeque<Order>> sellOrders = new TreeMap<>();
     private final Map<Long, Order> orderIndex = new HashMap<>();
-    private final MatchContext ctx = new MatchContext();
+    private final MatchContext ctx;
     private long tradeIdCounter = 0;
+
+    public OrderBook() {
+        this(new DirectOutboundSink(List.of(), List.of()));
+    }
+
+    public OrderBook(OutboundEventSink sink) {
+        this.ctx = new MatchContext(sink);
+    }
 
     public void addOrder(Order order, long seq) {
         ctx.setSequence(seq);
@@ -46,7 +54,7 @@ public class OrderBook {
         }
 
         TreeMap<Long, ArrayDeque<Order>> book =
-                        order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
+            order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
         ArrayDeque<Order> queue = book.get(order.getPrice());
 
         if (queue != null) {
@@ -77,8 +85,6 @@ public class OrderBook {
     private void matchMarketBuy(Order order, MatchContext ctx) {
         matchBuyWithoutResting(order, ctx, false);
         if (order.getRemainingQuantity() > 0) {
-            log.info("Market buy order not fully filled, cancelling remaining quantity: {}",
-                            order.getRemainingQuantity());
             order.setState(OrderState.CANCELLED);
         }
     }
@@ -86,8 +92,6 @@ public class OrderBook {
     private void matchMarketSell(Order order, MatchContext ctx) {
         matchSellWithoutResting(order, ctx, false);
         if (order.getRemainingQuantity() > 0) {
-            log.info("Market sell order not fully filled, cancelling remaining quantity: {}",
-                            order.getRemainingQuantity());
             order.setState(OrderState.CANCELLED);
         }
     }
@@ -154,8 +158,8 @@ public class OrderBook {
 
     private void handleFOK(Order order, MatchContext ctx) {
         boolean canFill = order.getSide() == OrderSide.BUY
-                        ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
-                        : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
+            ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
+            : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
@@ -165,7 +169,6 @@ public class OrderBook {
             }
         } else {
             order.setState(OrderState.CANCELLED);
-            log.info("FOK order cancelled due to insufficient liquidity");
         }
         emitOrderUpdate(order, ctx);
     }
@@ -179,7 +182,6 @@ public class OrderBook {
 
         if (order.getRemainingQuantity() > 0) {
             order.setState(OrderState.CANCELLED);
-            log.info("IOC order remainder cancelled");
         }
 
         emitOrderUpdate(order, ctx);
@@ -192,7 +194,7 @@ public class OrderBook {
 
     private void executeTrade(Order restingOrder, Order matchingOrder, MatchContext ctx) {
         long tradeQuantity = Math.min(restingOrder.getRemainingQuantity(),
-                        matchingOrder.getRemainingQuantity());
+            matchingOrder.getRemainingQuantity());
         restingOrder.reduceQuantity(tradeQuantity);
         matchingOrder.reduceQuantity(tradeQuantity);
         long tradePrice = restingOrder.getPrice();
@@ -234,19 +236,19 @@ public class OrderBook {
 
     private void emitOrderUpdate(Order order, MatchContext ctx) {
         ctx.emitOrderUpdate(order.getOrderId(), order.getClientOrderId(), order.getState(),
-                        order.getSymbol(), order.getRemainingQuantity(), order.getTimestamp());
+            order.getSymbol(), order.getRemainingQuantity(), order.getTimestamp());
     }
 
     private void emitTrade(Order restingOrder, Order matchingOrder, long price, long quantity,
-                    MatchContext ctx) {
+        MatchContext ctx) {
         long buyOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         long sellOrderId = getOrderId(restingOrder, matchingOrder, OrderSide.SELL);
         String buyClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         String sellClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.SELL);
 
         ctx.emitTrade(++tradeIdCounter, buyOrderId, buyClientOrderId, sellOrderId,
-                        sellClientOrderId, restingOrder.getSymbol(), price, quantity,
-                        matchingOrder.getTimestamp());
+            sellClientOrderId, restingOrder.getSymbol(), price, quantity,
+            matchingOrder.getTimestamp());
     }
 
     public Map<Long, List<Order>> getBuySnapshot() {

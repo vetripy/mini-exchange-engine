@@ -1,6 +1,5 @@
 package org.trading.exchange.engine;
 
-import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.YieldingWaitStrategy;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
@@ -10,17 +9,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
 import org.agrona.concurrent.ManyToOneConcurrentArrayQueue;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
-import org.trading.exchange.event.EngineEvent;
-import org.trading.exchange.event.OrderUpdateEvent;
+import org.trading.exchange.event.DirectOutboundSink;
 import org.trading.exchange.event.OutboundEvent;
 import org.trading.exchange.event.OutboundEventFactory;
 import org.trading.exchange.event.OutboundEventHandler;
-import org.trading.exchange.event.TradeEvent;
+import org.trading.exchange.event.OutboundEventSink;
+import org.trading.exchange.event.RingBufferOutboundSink;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
@@ -33,7 +31,6 @@ import org.trading.exchange.sequencer.Sequencer;
 import org.trading.exchange.util.EnvelopeUtil;
 import org.trading.exchange.validators.OrderValidator;
 
-@Slf4j
 public class MatchingEngine {
 
     private final ManyToOneConcurrentArrayQueue<Envelope<EngineCommand>> inboundEvents;
@@ -63,9 +60,13 @@ public class MatchingEngine {
             new YieldingWaitStrategy() // low-latency but yields to scheduler
         );
         disruptor.handleEventsWith(new OutboundEventHandler(tradeListeners, orderUpdateListeners));
-        RingBuffer<OutboundEvent> outboundEvents = disruptor.getRingBuffer();
+
+        OutboundEventSink sink = mode == EngineMode.ASYNC
+            ? new RingBufferOutboundSink(disruptor.getRingBuffer())
+            : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
+
         for (Symbol symbol : Symbol.values()) {
-            books.put(symbol, new OrderBook());
+            books.put(symbol, new OrderBook(sink));
         }
     }
 
@@ -98,12 +99,13 @@ public class MatchingEngine {
             try {
                 engineThread.join(5000); // 5 second timeout
             } catch (InterruptedException e) {
-                log.warn("Interrupted while waiting for engine thread to stop");
                 Thread.currentThread().interrupt();
             }
         }
 
-        disruptor.shutdown();
+        if (mode == EngineMode.ASYNC) {
+            disruptor.shutdown();
+        }
 
         if (this.state != EngineState.STOPPED) {
             transitionTo(EngineState.STOPPED, null);
@@ -120,10 +122,9 @@ public class MatchingEngine {
             }
             try {
                 process(envelope);
-            } catch (IllegalArgumentException e) {
-                log.warn("Command rejected: {}", e.getMessage());
+            } catch (IllegalArgumentException ignored) {
+
             } catch (RuntimeException e) {
-                log.error("Unexpected exception in engine loop, failing engine", e);
                 failEngine(e);
                 break;
             }
@@ -193,15 +194,6 @@ public class MatchingEngine {
         OrderBook orderBook = books.get(order.getSymbol());
         orderBook.cancelOrder(order.getOrderId(), seq);
         clientIdToOrder.remove(clientOrderId);
-    }
-
-    private void publishDirect(EngineEvent engineEvent) {
-        switch (engineEvent) {
-            case TradeEvent event -> tradeListeners.forEach(l -> l.onTrade(event));
-            case OrderUpdateEvent event ->
-                orderUpdateListeners.forEach(l -> l.onOrderUpdate(event));
-            default -> throw new IllegalStateException("Unsupported engine event: " + engineEvent);
-        }
     }
 
     private void failEngine(Throwable cause) {
