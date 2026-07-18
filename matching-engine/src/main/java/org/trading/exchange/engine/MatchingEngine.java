@@ -66,7 +66,7 @@ public class MatchingEngine {
             : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
 
         for (Symbol symbol : Symbol.values()) {
-            books.put(symbol, new OrderBook(sink));
+            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove));
         }
     }
 
@@ -121,9 +121,7 @@ public class MatchingEngine {
                 continue;
             }
             try {
-                process(envelope);
-            } catch (IllegalArgumentException ignored) {
-
+                process(envelope); // rejects are a return code now; nothing to catch for them
             } catch (RuntimeException e) {
                 failEngine(e);
                 break;
@@ -140,7 +138,10 @@ public class MatchingEngine {
         Envelope<EngineCommand> envelope = EnvelopeUtil.wrap(seq, command);
 
         if (EngineMode.SYNC.equals(this.mode)) {
-            process(envelope);
+            ProcessResult result = process(envelope);
+            if (result.isRejected()) {
+                throw new IllegalArgumentException(result.message());
+            }
         } else {
             boolean accepted = inboundEvents.offer(envelope);
             if (!accepted) {
@@ -150,31 +151,30 @@ public class MatchingEngine {
         }
     }
 
-    private void process(Envelope<EngineCommand> event) {
+    private ProcessResult process(Envelope<EngineCommand> event) {
         EngineCommand command = EnvelopeUtil.unwrap(event);
         long seq = event.sequence();
 
-        switch (command) {
+        return switch (command) {
             case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
             case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
             default -> throw new IllegalStateException("Unsupported engine command: " + command);
-        }
+        };
     }
 
-    private void handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
+    private ProcessResult handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
         Order order = buildOrderFromCommand(newOrderCommand, seq);
 
         orderValidator.validateInvariants(order);
 
         if (clientIdToOrder.putIfAbsent(order.getClientOrderId(), order) != null) {
-            throw new IllegalArgumentException("Duplicate clientOrderId");
+            return ProcessResult.DUPLICATE_CLIENT_ORDER_ID;
         }
         OrderBook orderBook = books.get(order.getSymbol());
+        // clientIdToOrder cleanup (for this order AND any resting counterparties it fills) is
+        // driven by OrderBook's onOrderTerminated callback, not here.
         orderBook.addOrder(order, seq);
-
-        if (order.getState().isTerminal()) {
-            clientIdToOrder.remove(order.getClientOrderId());
-        }
+        return ProcessResult.ACCEPTED;
     }
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
@@ -183,17 +183,20 @@ public class MatchingEngine {
             System.currentTimeMillis());
     }
 
-    private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
+    private ProcessResult handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String clientOrderId = cancelOrderCommand.getClientOrderId();
 
         Order order = clientIdToOrder.get(clientOrderId);
         if (order == null) {
-            throw new IllegalArgumentException("Unknown clientOrderId");
+            return ProcessResult.UNKNOWN_CLIENT_ORDER_ID;
         }
 
         OrderBook orderBook = books.get(order.getSymbol());
-        orderBook.cancelOrder(order.getOrderId(), seq);
-        clientIdToOrder.remove(clientOrderId);
+        // clientIdToOrder cleanup happens via OrderBook's onOrderTerminated callback, not here.
+        if (!orderBook.cancelOrder(order.getOrderId(), seq)) {
+            return ProcessResult.UNKNOWN_CLIENT_ORDER_ID;
+        }
+        return ProcessResult.ACCEPTED;
     }
 
     private void failEngine(Throwable cause) {

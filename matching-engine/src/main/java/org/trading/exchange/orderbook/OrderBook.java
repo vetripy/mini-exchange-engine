@@ -6,11 +6,12 @@ import static org.trading.exchange.util.OrderBookUtil.getOrderId;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
+import java.util.function.Consumer;
+import org.agrona.collections.Long2ObjectHashMap;
 import org.trading.exchange.event.DirectOutboundSink;
 import org.trading.exchange.event.OutboundEventSink;
 import org.trading.exchange.model.Order;
@@ -23,16 +24,19 @@ public class OrderBook {
     private final TreeMap<Long, ArrayDeque<Order>> buyOrders =
         new TreeMap<>(Comparator.reverseOrder());
     private final TreeMap<Long, ArrayDeque<Order>> sellOrders = new TreeMap<>();
-    private final Map<Long, Order> orderIndex = new HashMap<>();
+    private final Long2ObjectHashMap<Order> orderIndex = new Long2ObjectHashMap<>();
     private final MatchContext ctx;
+    private final Consumer<String> onOrderTerminated;
     private long tradeIdCounter = 0;
 
     public OrderBook() {
-        this(new DirectOutboundSink(List.of(), List.of()));
+        this(new DirectOutboundSink(List.of(), List.of()), clientOrderId -> {
+        });
     }
 
-    public OrderBook(OutboundEventSink sink) {
+    public OrderBook(OutboundEventSink sink, Consumer<String> onOrderTerminated) {
         this.ctx = new MatchContext(sink);
+        this.onOrderTerminated = onOrderTerminated;
     }
 
     public void addOrder(Order order, long seq) {
@@ -45,12 +49,12 @@ public class OrderBook {
         }
     }
 
-    public void cancelOrder(long orderId, long seq) {
+    public boolean cancelOrder(long orderId, long seq) {
         ctx.setSequence(seq);
         Order order = orderIndex.get(orderId);
 
         if (order == null) {
-            throw new IllegalArgumentException("Order not found: " + orderId);
+            return false;
         }
 
         TreeMap<Long, ArrayDeque<Order>> book =
@@ -66,6 +70,7 @@ public class OrderBook {
         order.setState(OrderState.CANCELLED);
         emitOrderUpdate(order, ctx);
         orderIndex.remove(orderId);
+        return true;
     }
 
     private void matchLimitBuy(Order order, MatchContext ctx) {
@@ -188,7 +193,7 @@ public class OrderBook {
     }
 
     private void addToBook(TreeMap<Long, ArrayDeque<Order>> book, Order order) {
-        book.computeIfAbsent(order.getPrice(), k -> new ArrayDeque<>(100)).addLast(order);
+        book.computeIfAbsent(order.getPrice(), k -> new ArrayDeque<>()).addLast(order);
         orderIndex.put(order.getOrderId(), order);
     }
 
@@ -237,6 +242,9 @@ public class OrderBook {
     private void emitOrderUpdate(Order order, MatchContext ctx) {
         ctx.emitOrderUpdate(order.getOrderId(), order.getClientOrderId(), order.getState(),
             order.getSymbol(), order.getRemainingQuantity(), order.getTimestamp());
+        if (order.getState().isTerminal()) {
+            onOrderTerminated.accept(order.getClientOrderId());
+        }
     }
 
     private void emitTrade(Order restingOrder, Order matchingOrder, long price, long quantity,
