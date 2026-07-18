@@ -1,26 +1,50 @@
 package org.trading.exchange.orderbook;
 
-import java.util.ArrayList;
-import java.util.List;
+import com.lmax.disruptor.RingBuffer;
 import lombok.Getter;
 import lombok.Setter;
-import org.trading.exchange.event.EngineEvent;
+import org.trading.exchange.event.OutboundEvent;
+import org.trading.exchange.model.OrderState;
+import org.trading.exchange.model.Symbol;
 
 @Getter
 @Setter
 public class MatchContext {
 
     private long sequence;
-    private final List<EngineEvent> events = new ArrayList<>(100);
+    private RingBuffer<OutboundEvent> outboundRing;
 
-    MatchContext() {
+    void setRingBuffer(RingBuffer<OutboundEvent> ring) {
+        this.outboundRing = ring;
     }
 
-    void emit(EngineEvent event) {
-        events.add(event);
+    void setSequence(long seq) {
+        this.sequence = seq;
     }
 
-    void clear() {
-        events.clear();
+    // Publish an ORDER_UPDATE directly to the ring.
+    void emitOrderUpdate(long orderId, String clientOrderId, OrderState state, Symbol symbol,
+        long remainingQty, long timestamp) {
+        long ringSeq = outboundRing.next();
+        try {
+            OutboundEvent event = outboundRing.get(ringSeq);
+            event.setAsOrderUpdate(sequence, orderId, clientOrderId, state, symbol, remainingQty,
+                timestamp);
+        } finally {
+            outboundRing.publish(ringSeq);
+        }
+    }
+
+    // Publish a TRADE directly to the ring.
+    void emitTrade(long tradeId, long buyOrderId, String buyClientOrderId, long sellOrderId,
+        String sellClientOrderId, Symbol symbol, long price, long qty, long timestamp) {
+        long ringSeq = outboundRing.next();
+        try {
+            OutboundEvent event = outboundRing.get(ringSeq);
+            event.setAsTrade(sequence, tradeId, buyOrderId, buyClientOrderId, sellOrderId,
+                sellClientOrderId, symbol, price, qty, timestamp);
+        } finally {
+            outboundRing.publish(ringSeq);
+        }
     }
 }

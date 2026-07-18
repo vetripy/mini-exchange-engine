@@ -4,8 +4,7 @@ import org.trading.exchange.model.Envelope;
 
 public final class EnvelopeUtil {
 
-    private EnvelopeUtil() {
-    }
+    private EnvelopeUtil() {}
 
     public static <T> T unwrap(Envelope<T> envelope) {
         return envelope.payload();

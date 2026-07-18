@@ -97,9 +97,9 @@ class MatchingEngineTest {
         assertEquals(100L, tradeEvent.tradePrice());
         assertEquals(5L, tradeEvent.quantity());
         assertEquals(((NewOrderCommand) buyCommand).getClientOrderId(),
-            tradeEvent.buyClientOrderId());
+                        tradeEvent.buyClientOrderId());
         assertEquals(((NewOrderCommand) sellCommand).getClientOrderId(),
-            tradeEvent.sellClientOrderId());
+                        tradeEvent.sellClientOrderId());
     }
 
     @Test
@@ -128,9 +128,9 @@ class MatchingEngineTest {
         assertEquals(4L, tradeEvent.quantity());
 
         OrderUpdateEvent lastUpdate = orderUpdateListener.getUpdates().stream()
-            .filter(orderUpdate -> Objects.equals(orderUpdate.clientOrderId(),
-                ((NewOrderCommand) buyCommand).getClientOrderId()))
-            .toList().getLast();
+                        .filter(orderUpdate -> Objects.equals(orderUpdate.clientOrderId(),
+                                        ((NewOrderCommand) buyCommand).getClientOrderId()))
+                        .toList().getLast();
 
         assertEquals(OrderState.PARTIALLY_FILLED, lastUpdate.orderState());
         assertEquals(6L, lastUpdate.remainingQuantity());
@@ -181,7 +181,7 @@ class MatchingEngineTest {
         assertEquals(2, tradeListener.getTrades().size());
 
         long totalQuantity =
-            tradeListener.getTrades().stream().mapToLong(TradeEvent::quantity).sum();
+                        tradeListener.getTrades().stream().mapToLong(TradeEvent::quantity).sum();
 
         assertEquals(5L, totalQuantity);
     }
@@ -193,7 +193,7 @@ class MatchingEngineTest {
         engine.submit(buyCommand);
 
         assertThrows(IllegalArgumentException.class,
-            () -> engine.submit(CancelOrderCommand.of("unknown-client-id")));
+                        () -> engine.submit(CancelOrderCommand.of("unknown-client-id")));
     }
 
     @Test

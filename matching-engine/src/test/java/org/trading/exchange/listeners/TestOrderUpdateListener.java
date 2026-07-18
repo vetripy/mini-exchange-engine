@@ -14,7 +14,7 @@ public class TestOrderUpdateListener implements OrderUpdateListener {
     @Override
     public void onOrderUpdate(OrderUpdateEvent update) {
         log.info("ORDER UPDATE → {} {} remaining: {}", update.orderId(), update.orderState(),
-            update.remainingQuantity());
+                        update.remainingQuantity());
         updates.add(update);
     }
 

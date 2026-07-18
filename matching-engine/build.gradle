@@ -24,6 +24,7 @@ dependencies {
     implementation libs.slf4j.api
     runtimeOnly libs.logback.classic
     implementation 'org.agrona:agrona:2.4.1'
+    implementation 'com.lmax:disruptor:3.4.2'
     testImplementation 'org.openjdk.jmh:jmh-core:1.37'
     testImplementation 'org.openjdk.jmh:jmh-generator-annprocess:1.37'
     jmh 'org.openjdk.jmh:jmh-core:1.23'
@@ -49,8 +50,8 @@ test {
 
 jmh {
     // === WARMUP & MEASUREMENT ===
-    warmupIterations = 5
-    iterations = 10               // INCREASED: was 5, now 10
+    warmupIterations = 1
+    iterations = 2               // INCREASED: was 5, now 10
     // 3 seconds per iteration (controlled by @Warmup/@Measurement annotations)
     timeUnit = 'us'
 

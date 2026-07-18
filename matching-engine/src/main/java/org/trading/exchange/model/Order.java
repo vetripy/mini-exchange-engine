@@ -8,7 +8,7 @@ import lombok.ToString;
 @ToString
 public class Order {
 
-    private final String orderId;
+    private final long orderId;
     private final String clientOrderId;
     private final String userId;
     private final Symbol symbol;
@@ -20,8 +20,8 @@ public class Order {
     @Setter
     private OrderState state = OrderState.NEW;
 
-    public Order(String orderId, String clientOrderId, String userId, Symbol symbol, OrderSide side,
-        OrderType type, long price, long remainingQuantity, long timestamp) {
+    public Order(long orderId, String clientOrderId, String userId, Symbol symbol, OrderSide side,
+                    OrderType type, long price, long remainingQuantity, long timestamp) {
         this.orderId = orderId;
         this.clientOrderId = clientOrderId;
         this.userId = userId;

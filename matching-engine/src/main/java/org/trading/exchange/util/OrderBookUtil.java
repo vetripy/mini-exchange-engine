@@ -38,7 +38,7 @@ public final class OrderBookUtil {
         System.out.println("\n============================================\n");
     }
 
-    public static String getOrderId(Order restingOrder, Order matchingOrder, OrderSide side) {
+    public static long getOrderId(Order restingOrder, Order matchingOrder, OrderSide side) {
         return side == restingOrder.getSide() ? restingOrder.getOrderId()
                         : matchingOrder.getOrderId();
     }

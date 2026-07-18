@@ -1,5 +1,10 @@
 package org.trading.exchange.engine;
 
+import com.lmax.disruptor.RingBuffer;
+import com.lmax.disruptor.YieldingWaitStrategy;
+import com.lmax.disruptor.dsl.Disruptor;
+import com.lmax.disruptor.dsl.ProducerType;
+import com.lmax.disruptor.util.DaemonThreadFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,12 +12,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.agrona.concurrent.ManyToOneConcurrentArrayQueue;
-import org.agrona.concurrent.OneToOneConcurrentArrayQueue;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
 import org.trading.exchange.event.EngineEvent;
 import org.trading.exchange.event.OrderUpdateEvent;
+import org.trading.exchange.event.OutboundEvent;
+import org.trading.exchange.event.OutboundEventFactory;
+import org.trading.exchange.event.OutboundEventHandler;
 import org.trading.exchange.event.TradeEvent;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
@@ -30,7 +37,7 @@ import org.trading.exchange.validators.OrderValidator;
 public class MatchingEngine {
 
     private final ManyToOneConcurrentArrayQueue<Envelope<EngineCommand>> inboundEvents;
-    private final OneToOneConcurrentArrayQueue<EngineEvent> outboundEvents;
+    private final Disruptor<OutboundEvent> disruptor;
     private final Sequencer sequencer;
     private final Map<String, Order> clientIdToOrder = new HashMap<>();
     private final Map<Symbol, OrderBook> books = new HashMap<>();
@@ -44,14 +51,19 @@ public class MatchingEngine {
     @Getter
     private volatile EngineState state;
     private Thread engineThread;
-    private Thread publisherThread;
 
     public MatchingEngine(EngineMode mode) {
         this.mode = mode;
         this.state = EngineState.NEW;
         this.inboundEvents = new ManyToOneConcurrentArrayQueue<>(100_000);
         this.sequencer = new Sequencer();
-        this.outboundEvents = new OneToOneConcurrentArrayQueue<>(100_000);
+        this.disruptor = new Disruptor<>(new OutboundEventFactory(), 131_072, // ring capacity
+            DaemonThreadFactory.INSTANCE, // creates the consumer thread
+            ProducerType.SINGLE, // engine thread is the sole writer
+            new YieldingWaitStrategy() // low-latency but yields to scheduler
+        );
+        disruptor.handleEventsWith(new OutboundEventHandler(tradeListeners, orderUpdateListeners));
+        RingBuffer<OutboundEvent> outboundEvents = disruptor.getRingBuffer();
         for (Symbol symbol : Symbol.values()) {
             books.put(symbol, new OrderBook());
         }
@@ -68,12 +80,11 @@ public class MatchingEngine {
             engineThread = new Thread(this::engineLoop, "engine-thread");
             engineThread.start();
 
-            publisherThread = new Thread(this::publishLoop, "publisher-thread");
-            publisherThread.start();
+            disruptor.start();
         }
     }
 
-    public synchronized void stop() throws InterruptedException {
+    public synchronized void stop() {
         if (this.state != EngineState.RUNNING && this.state != EngineState.FAILED) {
             throw new IllegalStateException("Engine cannot be stopped from state: " + this.state);
         }
@@ -92,15 +103,7 @@ public class MatchingEngine {
             }
         }
 
-        if (publisherThread != null) {
-            publisherThread.interrupt();
-            try {
-                publisherThread.join(5000); // 5 second timeout
-            } catch (InterruptedException e) {
-                log.warn("Interrupted while waiting for publisher thread to stop");
-                Thread.currentThread().interrupt();
-            }
-        }
+        disruptor.shutdown();
 
         if (this.state != EngineState.STOPPED) {
             transitionTo(EngineState.STOPPED, null);
@@ -112,7 +115,7 @@ public class MatchingEngine {
             Envelope<EngineCommand> envelope = inboundEvents.poll();
             if (envelope == null) {
                 // Queue empty, brief sleep to avoid busy-waiting
-                Thread.onSpinWait();  // or: Thread.yield()
+                Thread.onSpinWait(); // or: Thread.yield()
                 continue;
             }
             try {
@@ -124,21 +127,6 @@ public class MatchingEngine {
                 failEngine(e);
                 break;
             }
-        }
-    }
-
-    private void publishLoop() {
-        try {
-            while (this.state == EngineState.RUNNING || !outboundEvents.isEmpty()) {
-                EngineEvent event = outboundEvents.poll();
-                if (event == null) {
-                    Thread.onSpinWait();
-                    continue;
-                }
-                publishDirect(event);
-            }
-        } catch (Exception e) {
-            failEngine(e);
         }
     }
 
@@ -181,20 +169,17 @@ public class MatchingEngine {
             throw new IllegalArgumentException("Duplicate clientOrderId");
         }
         OrderBook orderBook = books.get(order.getSymbol());
-        List<EngineEvent> events = orderBook.addOrder(order, seq);
+        orderBook.addOrder(order, seq);
 
         if (order.getState().isTerminal()) {
             clientIdToOrder.remove(order.getClientOrderId());
         }
-
-        events.forEach(this::handleOutbound);
     }
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
-        String orderId = Long.toString(seq);
-        return new Order(orderId, cmd.getClientOrderId(), cmd.getUserId(),
-            Symbol.from(cmd.getSymbol()), cmd.getSide(), cmd.getType(), cmd.getPrice(),
-            cmd.getQuantity(), System.currentTimeMillis());
+        return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), Symbol.from(cmd.getSymbol()),
+            cmd.getSide(), cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
+            System.currentTimeMillis());
     }
 
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
@@ -204,13 +189,10 @@ public class MatchingEngine {
         if (order == null) {
             throw new IllegalArgumentException("Unknown clientOrderId");
         }
-        String orderId = order.getOrderId();
-        Symbol symbol = order.getSymbol();
 
-        OrderBook orderBook = books.get(symbol);
-        List<EngineEvent> events = orderBook.cancelOrder(orderId, seq);
+        OrderBook orderBook = books.get(order.getSymbol());
+        orderBook.cancelOrder(order.getOrderId(), seq);
         clientIdToOrder.remove(clientOrderId);
-        events.forEach(this::handleOutbound);
     }
 
     private void publishDirect(EngineEvent engineEvent) {
@@ -219,18 +201,6 @@ public class MatchingEngine {
             case OrderUpdateEvent event ->
                 orderUpdateListeners.forEach(l -> l.onOrderUpdate(event));
             default -> throw new IllegalStateException("Unsupported engine event: " + engineEvent);
-        }
-    }
-
-    private void handleOutbound(EngineEvent event) {
-        if (mode == EngineMode.ASYNC) {
-            boolean accepted = outboundEvents.offer(event);
-            if (!accepted) {
-                throw new IllegalStateException(
-                    "Engine outbound queue full — apply backpressure upstream");
-            }
-        } else {
-            publishDirect(event);
         }
     }
 
@@ -247,9 +217,6 @@ public class MatchingEngine {
             engineThread.interrupt();
         }
 
-        if (publisherThread != null) {
-            publisherThread.interrupt();
-        }
     }
 
     private synchronized void transitionTo(EngineState newState, Throwable cause) {

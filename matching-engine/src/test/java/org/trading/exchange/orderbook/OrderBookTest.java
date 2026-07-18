@@ -3,7 +3,14 @@ package org.trading.exchange.orderbook;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.trading.exchange.model.OrderState.CANCELLED;
 import static org.trading.exchange.model.OrderState.FILLED;
-import static org.trading.exchange.stub.OrderStub.*;
+import static org.trading.exchange.stub.OrderStub.getValidFOKBuyOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidFOKSellOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidIOCBuyOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidIOCSellOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidLimitBuyOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidLimitSellOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidMarketBuyOrderWith;
+import static org.trading.exchange.stub.OrderStub.getValidMarketSellOrderWith;
 
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -131,7 +138,7 @@ public class OrderBookTest {
     @DisplayName("Test cancelling a non-existent order in the order book")
     void testCancelNonExistentOrder() {
         // Given
-        String nonExistentOrderId = UUID.randomUUID().toString();
+        long nonExistentOrderId = UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
 
         // Then
         try {

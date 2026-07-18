@@ -29,14 +29,14 @@ import org.trading.exchange.model.OrderType;
 /**
  * Consolidated JMH Benchmarks for MatchingEngine.
  * <p>
- * Run via Gradle: ./gradlew jmh                                    # all benchmarks ./gradlew jmh
- * --include "baseline"              # baseline scenarios only ./gradlew jmh --include "heavyBook" #
- * heavy book scenarios ./gradlew jmh -Pjmh.profilers="gc"              # with GC profiler
+ * Run via Gradle: ./gradlew jmh # all benchmarks ./gradlew jmh --include "baseline" # baseline
+ * scenarios only ./gradlew jmh --include "heavyBook" # heavy book scenarios ./gradlew jmh
+ * -Pjmh.profilers="gc" # with GC profiler
  * <p>
- * Benchmark Categories: - baseline_*        : Core operations (single order, matching, cancel) -
- * heavyBook_*       : Large pre-loaded book scenarios - deepBook_*        : Multi-level price
- * traversal - partialFill_*     : Partial order matching - multiSymbol_*     : Cross-symbol
- * distribution - async_*           : ASYNC mode producer overhead
+ * Benchmark Categories: - baseline_* : Core operations (single order, matching, cancel) -
+ * heavyBook_* : Large pre-loaded book scenarios - deepBook_* : Multi-level price traversal -
+ * partialFill_* : Partial order matching - multiSymbol_* : Cross-symbol distribution - async_* :
+ * ASYNC mode producer overhead
  */
 @BenchmarkMode({Mode.Throughput, Mode.AverageTime})
 @OutputTimeUnit(TimeUnit.MICROSECONDS)
@@ -187,12 +187,7 @@ public class MatchingEngineBenchmark {
 
             // Load 100k BUY orders across 500 price levels
             for (int i = 1; i <= 100_000; i++) {
-                engine.submit(buildBuyLimit(
-                    "HEAVY-" + i,
-                    "AAPL",
-                    100_00 + (i % 500),
-                    1
-                ));
+                engine.submit(buildBuyLimit("HEAVY-" + i, "AAPL", 100_00 + (i % 500), 1));
             }
         }
 
@@ -208,8 +203,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void heavyBook_partialCross(HeavyBookState s) throws InterruptedException {
-        s.engine.submit(
-            buildSellLimit("SELL-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 100));
+        s.engine.submit(buildSellLimit("SELL-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00,
+                        100));
     }
 
     /**
@@ -217,8 +212,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void heavyBook_fullCross(HeavyBookState s) throws InterruptedException {
-        s.engine.submit(
-            buildSellLimit("SELL-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 100_000));
+        s.engine.submit(buildSellLimit("SELL-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00,
+                        100_000));
     }
 
     // ==================================================================================
@@ -238,12 +233,9 @@ public class MatchingEngineBenchmark {
 
             // Load 10k orders at different prices (sparse book, deep levels)
             for (int i = 0; i < 10_000; i++) {
-                engine.submit(buildBuyLimit(
-                    "DEEP-" + i,
-                    "AAPL",
-                    100_00 + (i * 10),  // Every 10 cents
-                    1
-                ));
+                engine.submit(buildBuyLimit("DEEP-" + i, "AAPL", 100_00 + (i * 10), // Every 10
+                                                                                    // cents
+                                1));
             }
         }
 
@@ -258,8 +250,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void deepBook_crossMultipleLevels(DeepBookState s) throws InterruptedException {
-        s.engine.submit(
-            buildSellLimit("XING-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 1000));
+        s.engine.submit(buildSellLimit("XING-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00,
+                        1000));
     }
 
     // ==================================================================================
@@ -279,12 +271,7 @@ public class MatchingEngineBenchmark {
 
             // Load 1k orders of 50 units each
             for (int i = 0; i < 1000; i++) {
-                engine.submit(buildBuyLimit(
-                    "PARTIAL-" + i,
-                    "AAPL",
-                    100_00 + (i % 50),
-                    50
-                ));
+                engine.submit(buildBuyLimit("PARTIAL-" + i, "AAPL", 100_00 + (i % 50), 50));
             }
         }
 
@@ -300,8 +287,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void partialFill_small(PartialFillState s) throws InterruptedException {
-        s.engine.submit(
-            buildSellLimit("PS-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 100));
+        s.engine.submit(buildSellLimit("PS-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00,
+                        100));
     }
 
     /**
@@ -310,8 +297,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void partialFill_medium(PartialFillState s) throws InterruptedException {
-        s.engine.submit(
-            buildSellLimit("PM-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 500));
+        s.engine.submit(buildSellLimit("PM-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00,
+                        500));
     }
 
     /**
@@ -320,8 +307,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void partialFill_fullMatch(PartialFillState s) throws InterruptedException {
-        s.engine.submit(
-            buildSellLimit("PF-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00, 50_000));
+        s.engine.submit(buildSellLimit("PF-" + s.sellCounter.incrementAndGet(), "AAPL", 100_00,
+                        50_000));
     }
 
     // ==================================================================================
@@ -425,12 +412,9 @@ public class MatchingEngineBenchmark {
 
             // Worst case: 10k orders at 10k unique prices
             for (int i = 0; i < 10_000; i++) {
-                engine.submit(buildBuyLimit(
-                    "WC-" + i,
-                    "AAPL",
-                    100_00 + i,  // Every order at unique price
-                    100
-                ));
+                engine.submit(buildBuyLimit("WC-" + i, "AAPL", 100_00 + i, // Every order at unique
+                                                                           // price
+                                100));
             }
         }
 
@@ -446,8 +430,8 @@ public class MatchingEngineBenchmark {
      */
     @Benchmark
     public void worstCase_marketSweep(WorstCaseState s) throws InterruptedException {
-        s.engine.submit(
-            buildSellMarket("SWEEP-" + s.sellCounter.incrementAndGet(), "AAPL", 1_000_000));
+        s.engine.submit(buildSellMarket("SWEEP-" + s.sellCounter.incrementAndGet(), "AAPL",
+                        1_000_000));
     }
 
     // ==================================================================================
@@ -455,41 +439,23 @@ public class MatchingEngineBenchmark {
     // ==================================================================================
 
     private static NewOrderCommand buildBuyLimit(String clientId, String symbol, long price,
-        long qty) {
-        return NewOrderCommand.builder()
-            .clientOrderId(clientId)
-            .userId("user-bench")
-            .symbol(symbol)
-            .side(OrderSide.BUY)
-            .type(OrderType.LIMIT)
-            .price(price)
-            .quantity(qty)
-            .build();
+                    long qty) {
+        return NewOrderCommand.builder().clientOrderId(clientId).userId("user-bench").symbol(symbol)
+                        .side(OrderSide.BUY).type(OrderType.LIMIT).price(price).quantity(qty)
+                        .build();
     }
 
     private static NewOrderCommand buildSellLimit(String clientId, String symbol, long price,
-        long qty) {
-        return NewOrderCommand.builder()
-            .clientOrderId(clientId)
-            .userId("user-bench")
-            .symbol(symbol)
-            .side(OrderSide.SELL)
-            .type(OrderType.LIMIT)
-            .price(price)
-            .quantity(qty)
-            .build();
+                    long qty) {
+        return NewOrderCommand.builder().clientOrderId(clientId).userId("user-bench").symbol(symbol)
+                        .side(OrderSide.SELL).type(OrderType.LIMIT).price(price).quantity(qty)
+                        .build();
     }
 
     private static NewOrderCommand buildMarketOrder(String clientId, String symbol, OrderSide side,
-        long qty) {
-        return NewOrderCommand.builder()
-            .clientOrderId(clientId)
-            .userId("user-bench")
-            .symbol(symbol)
-            .side(side)
-            .type(OrderType.MARKET)
-            .quantity(qty)
-            .build();
+                    long qty) {
+        return NewOrderCommand.builder().clientOrderId(clientId).userId("user-bench").symbol(symbol)
+                        .side(side).type(OrderType.MARKET).quantity(qty).build();
     }
 
     private static NewOrderCommand buildSellMarket(String clientId, String symbol, long qty) {
@@ -501,12 +467,8 @@ public class MatchingEngineBenchmark {
     // ==================================================================================
 
     public static void main(String[] args) throws RunnerException {
-        Options opt = new OptionsBuilder()
-            .include(MatchingEngineBenchmark.class.getSimpleName())
-            .warmupIterations(3)
-            .measurementIterations(5)
-            .forks(2)
-            .build();
+        Options opt = new OptionsBuilder().include(MatchingEngineBenchmark.class.getSimpleName())
+                        .warmupIterations(3).measurementIterations(5).forks(2).build();
         new Runner(opt).run();
     }
 }
