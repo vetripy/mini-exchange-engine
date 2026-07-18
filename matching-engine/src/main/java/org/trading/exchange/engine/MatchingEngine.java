@@ -3,12 +3,11 @@ package org.trading.exchange.engine;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.LinkedBlockingQueue;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.agrona.concurrent.ManyToOneConcurrentArrayQueue;
+import org.agrona.concurrent.OneToOneConcurrentArrayQueue;
 import org.trading.exchange.engine.command.CancelOrderCommand;
 import org.trading.exchange.engine.command.EngineCommand;
 import org.trading.exchange.engine.command.NewOrderCommand;
@@ -30,11 +29,11 @@ import org.trading.exchange.validators.OrderValidator;
 @Slf4j
 public class MatchingEngine {
 
-    private final BlockingQueue<Envelope<EngineCommand>> inboundEvents;
-    private final BlockingQueue<EngineEvent> outboundEvents;
+    private final ManyToOneConcurrentArrayQueue<Envelope<EngineCommand>> inboundEvents;
+    private final OneToOneConcurrentArrayQueue<EngineEvent> outboundEvents;
     private final Sequencer sequencer;
-    private final Map<String, String> clientIdToOrderId = new HashMap<>();
-    private final Map<String, OrderBook> books = new HashMap<>();
+    private final Map<String, Order> clientIdToOrder = new HashMap<>();
+    private final Map<Symbol, OrderBook> books = new HashMap<>();
     private final OrderValidator orderValidator = new OrderValidator();
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
@@ -50,11 +49,11 @@ public class MatchingEngine {
     public MatchingEngine(EngineMode mode) {
         this.mode = mode;
         this.state = EngineState.NEW;
-        this.inboundEvents = new LinkedBlockingQueue<>(20_000);
+        this.inboundEvents = new ManyToOneConcurrentArrayQueue<>(100_000);
         this.sequencer = new Sequencer();
-        this.outboundEvents = new ArrayBlockingQueue<>(20_000);
+        this.outboundEvents = new OneToOneConcurrentArrayQueue<>(100_000);
         for (Symbol symbol : Symbol.values()) {
-            books.put(symbol.name(), new OrderBook());
+            books.put(symbol, new OrderBook());
         }
     }
 
@@ -178,23 +177,21 @@ public class MatchingEngine {
 
         orderValidator.validateInvariants(order);
 
-        // thread safe since orders are only added in the engine thread (single threaded)
-        if (clientIdToOrderId.containsKey(order.getClientOrderId())) {
+        if (clientIdToOrder.putIfAbsent(order.getClientOrderId(), order) != null) {
             throw new IllegalArgumentException("Duplicate clientOrderId");
         }
-        clientIdToOrderId.put(order.getClientOrderId(), order.getOrderId());
-        OrderBook orderBook = books.get(order.getSymbol().name());
+        OrderBook orderBook = books.get(order.getSymbol());
         List<EngineEvent> events = orderBook.addOrder(order, seq);
 
         if (order.getState().isTerminal()) {
-            clientIdToOrderId.remove(order.getClientOrderId());
+            clientIdToOrder.remove(order.getClientOrderId());
         }
 
         events.forEach(this::handleOutbound);
     }
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
-        String orderId = cmd.getSymbol() + "-" + seq;
+        String orderId = Long.toString(seq);
         return new Order(orderId, cmd.getClientOrderId(), cmd.getUserId(),
             Symbol.from(cmd.getSymbol()), cmd.getSide(), cmd.getType(), cmd.getPrice(),
             cmd.getQuantity(), System.currentTimeMillis());
@@ -203,20 +200,17 @@ public class MatchingEngine {
     private void handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
         String clientOrderId = cancelOrderCommand.getClientOrderId();
 
-        String orderId = clientIdToOrderId.get(cancelOrderCommand.getClientOrderId());
-        if (orderId == null) {
+        Order order = clientIdToOrder.get(clientOrderId);
+        if (order == null) {
             throw new IllegalArgumentException("Unknown clientOrderId");
         }
-        String symbol = parseSymbolFromOrderId(orderId);
+        String orderId = order.getOrderId();
+        Symbol symbol = order.getSymbol();
 
-        OrderBook orderBook = books.get(Symbol.from(symbol).name());
+        OrderBook orderBook = books.get(symbol);
         List<EngineEvent> events = orderBook.cancelOrder(orderId, seq);
-        clientIdToOrderId.remove(clientOrderId);
+        clientIdToOrder.remove(clientOrderId);
         events.forEach(this::handleOutbound);
-    }
-
-    private String parseSymbolFromOrderId(String orderId) {
-        return orderId.split("-")[0];
     }
 
     private void publishDirect(EngineEvent engineEvent) {
@@ -230,10 +224,10 @@ public class MatchingEngine {
 
     private void handleOutbound(EngineEvent event) {
         if (mode == EngineMode.ASYNC) {
-            try {
-                outboundEvents.put(event);
-            } catch (InterruptedException e) {
-                failEngine(e);
+            boolean accepted = outboundEvents.offer(event);
+            if (!accepted) {
+                throw new IllegalStateException(
+                    "Engine outbound queue full — apply backpressure upstream");
             }
         } else {
             publishDirect(event);
