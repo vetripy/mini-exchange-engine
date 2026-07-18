@@ -23,17 +23,15 @@ import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
-import org.trading.exchange.model.Envelope;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.Symbol;
 import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
-import org.trading.exchange.util.EnvelopeUtil;
 import org.trading.exchange.validators.OrderValidator;
 
 public class MatchingEngine {
 
-    private final ManyToOneConcurrentArrayQueue<Envelope<EngineCommand>> inboundEvents;
+    private final ManyToOneConcurrentArrayQueue<EngineCommand> inboundEvents;
     private final Disruptor<OutboundEvent> disruptor;
     private final Sequencer sequencer;
     private final Map<String, Order> clientIdToOrder = new HashMap<>();
@@ -114,14 +112,14 @@ public class MatchingEngine {
 
     private void engineLoop() {
         while (this.state == EngineState.RUNNING) {
-            Envelope<EngineCommand> envelope = inboundEvents.poll();
-            if (envelope == null) {
+            EngineCommand command = inboundEvents.poll();
+            if (command == null) {
                 // Queue empty, brief sleep to avoid busy-waiting
                 Thread.onSpinWait(); // or: Thread.yield()
                 continue;
             }
             try {
-                process(envelope); // rejects are a return code now; nothing to catch for them
+                process(command); // rejects are a return code now; nothing to catch for them
             } catch (RuntimeException e) {
                 failEngine(e);
                 break;
@@ -134,16 +132,15 @@ public class MatchingEngine {
             throw new IllegalStateException("Engine is not running");
         }
 
-        long seq = sequencer.getNextSequence();
-        Envelope<EngineCommand> envelope = EnvelopeUtil.wrap(seq, command);
+        command.setSequence(sequencer.getNextSequence());
 
         if (EngineMode.SYNC.equals(this.mode)) {
-            ProcessResult result = process(envelope);
+            ProcessResult result = process(command);
             if (result.isRejected()) {
                 throw new IllegalArgumentException(result.message());
             }
         } else {
-            boolean accepted = inboundEvents.offer(envelope);
+            boolean accepted = inboundEvents.offer(command);
             if (!accepted) {
                 throw new IllegalStateException(
                                 "Engine inbound queue full — apply backpressure upstream");
@@ -151,9 +148,8 @@ public class MatchingEngine {
         }
     }
 
-    private ProcessResult process(Envelope<EngineCommand> event) {
-        EngineCommand command = EnvelopeUtil.unwrap(event);
-        long seq = event.sequence();
+    private ProcessResult process(EngineCommand command) {
+        long seq = command.getSequence();
 
         return switch (command) {
             case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
