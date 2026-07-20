@@ -1,6 +1,7 @@
 package org.trading.exchange.event;
 
 import java.util.List;
+import org.trading.exchange.listener.CommandRejectedListener;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.OrderState;
@@ -10,11 +11,14 @@ public class DirectOutboundSink implements OutboundEventSink {
 
     private final List<TradeListener> tradeListeners;
     private final List<OrderUpdateListener> orderUpdateListeners;
+    private final List<CommandRejectedListener> commandRejectedListeners;
 
     public DirectOutboundSink(List<TradeListener> tradeListeners,
-                    List<OrderUpdateListener> orderUpdateListeners) {
+                    List<OrderUpdateListener> orderUpdateListeners,
+                    List<CommandRejectedListener> commandRejectedListeners) {
         this.tradeListeners = tradeListeners;
         this.orderUpdateListeners = orderUpdateListeners;
+        this.commandRejectedListeners = commandRejectedListeners;
     }
 
     @Override
@@ -35,6 +39,14 @@ public class DirectOutboundSink implements OutboundEventSink {
                         sellOrderId, sellClientOrderId, symbol, tradePrice, quantity, timestamp);
         for (TradeListener listener : tradeListeners) {
             listener.onTrade(event);
+        }
+    }
+
+    @Override
+    public void publishCommandRejected(long sequence, String clientOrderId, String reason) {
+        CommandRejectedEvent event = new CommandRejectedEvent(sequence, clientOrderId, reason);
+        for (CommandRejectedListener listener : commandRejectedListeners) {
+            listener.onCommandRejected(event);
         }
     }
 }

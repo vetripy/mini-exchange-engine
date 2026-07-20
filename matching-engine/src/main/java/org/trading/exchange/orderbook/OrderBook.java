@@ -30,7 +30,7 @@ public class OrderBook {
     private long tradeIdCounter = 0;
 
     public OrderBook() {
-        this(new DirectOutboundSink(List.of(), List.of()), clientOrderId -> {
+        this(new DirectOutboundSink(List.of(), List.of(), List.of()), clientOrderId -> {
         });
     }
 

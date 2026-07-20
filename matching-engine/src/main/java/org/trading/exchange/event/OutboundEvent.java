@@ -17,10 +17,11 @@ public class OutboundEvent {
 
     public static final int TYPE_ORDER_UPDATE = 0;
     public static final int TYPE_TRADE = 1;
+    public static final int TYPE_COMMAND_REJECTED = 2;
 
     public int type;
 
-    // --- Common to both ---
+    // --- Common to all ---
     public long sequence;
     public Symbol symbol;
     public long timestamp;
@@ -39,6 +40,9 @@ public class OutboundEvent {
     public String sellClientOrderId;
     public long tradePrice;
     public long quantity;
+
+    // --- COMMAND_REJECTED specific (clientOrderId field above is reused here too) ---
+    public String rejectReason;
 
     public void setAsOrderUpdate(long sequence, long orderId, String clientOrderId,
                     OrderState orderState, Symbol symbol, long remainingQuantity, long timestamp) {
@@ -68,6 +72,13 @@ public class OutboundEvent {
         this.timestamp = timestamp;
     }
 
+    public void setAsCommandRejected(long sequence, String clientOrderId, String rejectReason) {
+        this.type = TYPE_COMMAND_REJECTED;
+        this.sequence = sequence;
+        this.clientOrderId = clientOrderId;
+        this.rejectReason = rejectReason;
+    }
+
     public OrderUpdateEvent toOrderUpdateEvent() {
         return new OrderUpdateEvent(sequence, orderId, clientOrderId, orderState, symbol,
                         remainingQuantity, timestamp);
@@ -76,5 +87,9 @@ public class OutboundEvent {
     public TradeEvent toTradeEvent() {
         return new TradeEvent(sequence, tradeId, buyOrderId, buyClientOrderId, sellOrderId,
                         sellClientOrderId, symbol, tradePrice, quantity, timestamp);
+    }
+
+    public CommandRejectedEvent toCommandRejectedEvent() {
+        return new CommandRejectedEvent(sequence, clientOrderId, rejectReason);
     }
 }
