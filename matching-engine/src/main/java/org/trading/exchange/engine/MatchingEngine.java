@@ -64,8 +64,7 @@ public class MatchingEngine {
         disruptor.handleEventsWith(new OutboundEventHandler(tradeListeners, orderUpdateListeners,
                         commandRejectedListeners));
 
-        this.sink = mode == EngineMode.ASYNC
-                        ? new RingBufferOutboundSink(disruptor.getRingBuffer())
+        this.sink = mode == EngineMode.ASYNC ? new RingBufferOutboundSink(disruptor.getRingBuffer())
                         : new DirectOutboundSink(tradeListeners, orderUpdateListeners,
                                         commandRejectedListeners);
 
