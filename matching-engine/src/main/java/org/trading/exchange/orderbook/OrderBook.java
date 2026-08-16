@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import org.agrona.collections.Long2ObjectHashMap;
@@ -32,7 +33,7 @@ public class OrderBook {
 
     public OrderBook() {
         this(new DirectOutboundSink(List.of(), List.of()), clientOrderId -> {
-        }, () -> 0L);
+        }, new AtomicLong()::incrementAndGet);
     }
 
     public OrderBook(OutboundEventSink sink, Consumer<String> onOrderTerminated, LongSupplier tradeIdSupplier) {
