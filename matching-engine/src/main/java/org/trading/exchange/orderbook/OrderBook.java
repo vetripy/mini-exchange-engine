@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import org.agrona.collections.Long2ObjectHashMap;
 import org.trading.exchange.event.DirectOutboundSink;
 import org.trading.exchange.event.OutboundEventSink;
@@ -27,16 +28,17 @@ public class OrderBook {
     private final Long2ObjectHashMap<Order> orderIndex = new Long2ObjectHashMap<>();
     private final MatchContext ctx;
     private final Consumer<String> onOrderTerminated;
-    private long tradeIdCounter = 0;
+    private final LongSupplier tradeIdSupplier;
 
     public OrderBook() {
         this(new DirectOutboundSink(List.of(), List.of()), clientOrderId -> {
-        });
+        }, () -> 0L);
     }
 
-    public OrderBook(OutboundEventSink sink, Consumer<String> onOrderTerminated) {
+    public OrderBook(OutboundEventSink sink, Consumer<String> onOrderTerminated, LongSupplier tradeIdSupplier) {
         this.ctx = new MatchContext(sink);
         this.onOrderTerminated = onOrderTerminated;
+        this.tradeIdSupplier = tradeIdSupplier;
     }
 
     public void addOrder(Order order, long seq) {
@@ -254,7 +256,7 @@ public class OrderBook {
         String buyClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.BUY);
         String sellClientOrderId = getClientOrderId(restingOrder, matchingOrder, OrderSide.SELL);
 
-        ctx.emitTrade(++tradeIdCounter, buyOrderId, buyClientOrderId, sellOrderId,
+        ctx.emitTrade(tradeIdSupplier.getAsLong(), buyOrderId, buyClientOrderId, sellOrderId,
                         sellClientOrderId, restingOrder.getSymbol(), price, quantity,
                         matchingOrder.getTimestamp());
     }

@@ -39,6 +39,7 @@ public class MatchingEngine {
     private final Map<String, Order> clientIdToOrder = new HashMap<>();
     private final Map<Symbol, OrderBook> books = new HashMap<>();
     private final OrderValidator orderValidator = new OrderValidator();
+    private long tradeIdCounter;
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
@@ -64,9 +65,9 @@ public class MatchingEngine {
         OutboundEventSink sink = mode == EngineMode.ASYNC
                         ? new RingBufferOutboundSink(disruptor.getRingBuffer())
                         : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
-
+        this.tradeIdCounter = 0L;
         for (Symbol symbol : Symbol.values()) {
-            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove));
+            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove, this::getNextTradeId));
         }
     }
 
@@ -226,6 +227,10 @@ public class MatchingEngine {
 
     public void addStateListener(EngineStateListener listener) {
         stateListeners.add(listener);
+    }
+
+    private long getNextTradeId() {
+        return ++tradeIdCounter;
     }
 
 }
