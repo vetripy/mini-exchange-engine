@@ -702,12 +702,15 @@ public final class SustainedLoadHarness {
             this.depthAnchor = depthAnchor;
         }
 
-        // OrderBook's internal TreeMap/ArrayDeque are single-thread (engine) structures.
-        // Snapshotting them while the engine mutates can throw ConcurrentModification. At
-        // >=1M/sec the engine thread is busy enough that a single attempt collides almost every
-        // tick, starving the sampler down to a handful of points/run and making the growing()
-        // trend detector noise-dominated. Retry a bounded number of times with a short backoff
-        // instead of giving up after one shot.
+        // OrderBook's internal TreeMap/PriceLevel are single-thread (engine) structures.
+        // Snapshotting them while the engine mutates can throw (e.g. NPE walking a PriceLevel
+        // mid-unlink) or, since PriceLevel's iterator has no fail-fast modCount check unlike the
+        // old ArrayDeque, silently return a torn (undercounted) depth with no exception at all.
+        // At >=1M/sec the engine thread is busy enough that a single attempt collides almost
+        // every tick, starving the sampler down to a handful of points/run and making the
+        // growing() trend detector noise-dominated. Retry a bounded number of times with a short
+        // backoff instead of giving up after one shot — this bounds but does not eliminate the
+        // torn-read risk, so growing() already treats individual samples as noisy signal.
         private static final int MAX_SAMPLE_ATTEMPTS = 20;
 
         void sample() {

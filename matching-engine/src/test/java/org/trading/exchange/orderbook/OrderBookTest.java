@@ -385,6 +385,44 @@ public class OrderBookTest {
     }
 
     @Test
+    @DisplayName("Cancelling a middle order in a price level preserves FIFO order of the rest")
+    void testCancelMiddleOrderPreservesFIFO() {
+        Order buy1 = getValidLimitBuyOrderWith(10L, 1L);
+        Order buy2 = getValidLimitBuyOrderWith(10L, 2L);
+        Order buy3 = getValidLimitBuyOrderWith(10L, 3L);
+
+        orderBook.addOrder(buy1, ++sequence);
+        orderBook.addOrder(buy2, ++sequence);
+        orderBook.addOrder(buy3, ++sequence);
+
+        orderBook.cancelOrder(buy2.getOrderId(), ++sequence);
+
+        assertEquals(List.of(buy1, buy3), orderBook.getBuySnapshot().get(10L));
+
+        // FIFO priority among the survivors must still hold: buy1 fills before buy3.
+        orderBook.addOrder(getValidLimitSellOrderWith(10L, 1L), ++sequence);
+        assertEquals(0L, buy1.getRemainingQuantity());
+        assertEquals(3L, buy3.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("Cancelling the tail order in a price level keeps the level usable for further adds")
+    void testCancelTailOrderThenAddNewOrder() {
+        Order buy1 = getValidLimitBuyOrderWith(10L, 1L);
+        Order buy2 = getValidLimitBuyOrderWith(10L, 2L);
+
+        orderBook.addOrder(buy1, ++sequence);
+        orderBook.addOrder(buy2, ++sequence);
+
+        orderBook.cancelOrder(buy2.getOrderId(), ++sequence);
+
+        Order buy3 = getValidLimitBuyOrderWith(10L, 3L);
+        orderBook.addOrder(buy3, ++sequence);
+
+        assertEquals(List.of(buy1, buy3), orderBook.getBuySnapshot().get(10L));
+    }
+
+    @Test
     @DisplayName("Market order fills across multiple price levels")
     void testMarketOrderAcrossMultiplePriceLevels() {
         orderBook.addOrder(getValidLimitSellOrderWith(10L, 2L), ++sequence);
