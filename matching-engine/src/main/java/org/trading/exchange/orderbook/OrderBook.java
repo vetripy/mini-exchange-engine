@@ -170,7 +170,9 @@ public class OrderBook {
         return Objects.equals(aggressor.getUserId(), resting.getUserId());
     }
 
-    /** Returns true if the aggressor is done matching (break), false to retry the loop (continue). */
+    /**
+     * Returns true if the aggressor is done matching (break), false to retry the loop (continue).
+     */
     private boolean applyStp(Order aggressor, Order resting, ArrayDeque<Order> restingQueue,
                     TreeMap<Long, ArrayDeque<Order>> restingBook, MatchContext ctx) {
         return switch (stpPolicy) {
@@ -221,10 +223,10 @@ public class OrderBook {
 
     private void handleFOK(Order order, MatchContext ctx) {
         boolean canFill = order.getSide() == OrderSide.BUY
-                        ? availableSellLiquidity(order.getPrice(),
-                                        order.getUserId()) >= order.getRemainingQuantity()
-                        : availableBuyLiquidity(order.getPrice(),
-                                        order.getUserId()) >= order.getRemainingQuantity();
+                        ? availableSellLiquidity(order.getPrice(), order.getUserId()) >= order
+                                        .getRemainingQuantity()
+                        : availableBuyLiquidity(order.getPrice(), order.getUserId()) >= order
+                                        .getRemainingQuantity();
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {

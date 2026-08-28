@@ -196,8 +196,7 @@ public class MatchingEngine {
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq, Symbol symbol) {
         return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), symbol, cmd.getSide(),
-                        cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
-                        cmd.getTimestamp());
+                        cmd.getType(), cmd.getPrice(), cmd.getQuantity(), cmd.getTimestamp());
     }
 
     private ProcessResult handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
