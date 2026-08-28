@@ -35,7 +35,7 @@ public class OrderBook {
     private final STPPolicy stpPolicy;
 
     public OrderBook() {
-        this(new DirectOutboundSink(List.of(), List.of()), clientOrderId -> {
+        this(new DirectOutboundSink(List.of(), List.of(), List.of()), clientOrderId -> {
         }, new AtomicLong()::incrementAndGet, STPPolicy.CANCEL_NEWEST);
     }
 

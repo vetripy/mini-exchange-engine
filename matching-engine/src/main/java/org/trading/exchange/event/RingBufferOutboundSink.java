@@ -38,4 +38,15 @@ public class RingBufferOutboundSink implements OutboundEventSink {
             ring.publish(ringSeq);
         }
     }
+
+    @Override
+    public void publishCommandRejected(long sequence, String clientOrderId, String reason) {
+        long ringSeq = ring.next();
+        try {
+            OutboundEvent event = ring.get(ringSeq);
+            event.setAsCommandRejected(sequence, clientOrderId, reason);
+        } finally {
+            ring.publish(ringSeq);
+        }
+    }
 }

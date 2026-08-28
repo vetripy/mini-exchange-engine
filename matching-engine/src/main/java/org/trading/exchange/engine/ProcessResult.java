@@ -3,7 +3,7 @@ package org.trading.exchange.engine;
 public enum ProcessResult {
 
     ACCEPTED(null), DUPLICATE_CLIENT_ORDER_ID("Duplicate clientOrderId"), UNKNOWN_CLIENT_ORDER_ID(
-                    "Unknown clientOrderId");
+                    "Unknown clientOrderId"), INVALID_ORDER("Invalid order");
 
     private final String message;
 
