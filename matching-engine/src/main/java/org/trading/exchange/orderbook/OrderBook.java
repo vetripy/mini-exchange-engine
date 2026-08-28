@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -19,6 +20,7 @@ import org.trading.exchange.event.OutboundEventSink;
 import org.trading.exchange.model.Order;
 import org.trading.exchange.model.OrderSide;
 import org.trading.exchange.model.OrderState;
+import org.trading.exchange.model.STPPolicy;
 import org.trading.exchange.util.OrderBookUtil;
 
 public class OrderBook {
@@ -30,16 +32,19 @@ public class OrderBook {
     private final MatchContext ctx;
     private final Consumer<String> onOrderTerminated;
     private final LongSupplier tradeIdSupplier;
+    private final STPPolicy stpPolicy;
 
     public OrderBook() {
         this(new DirectOutboundSink(List.of(), List.of()), clientOrderId -> {
-        }, new AtomicLong()::incrementAndGet);
+        }, new AtomicLong()::incrementAndGet, STPPolicy.CANCEL_NEWEST);
     }
 
-    public OrderBook(OutboundEventSink sink, Consumer<String> onOrderTerminated, LongSupplier tradeIdSupplier) {
+    public OrderBook(OutboundEventSink sink, Consumer<String> onOrderTerminated,
+                    LongSupplier tradeIdSupplier, STPPolicy stpPolicy) {
         this.ctx = new MatchContext(sink);
         this.onOrderTerminated = onOrderTerminated;
         this.tradeIdSupplier = tradeIdSupplier;
+        this.stpPolicy = stpPolicy;
     }
 
     public void addOrder(Order order, long seq) {
@@ -78,14 +83,14 @@ public class OrderBook {
 
     private void matchLimitBuy(Order order, MatchContext ctx) {
         matchBuyWithoutResting(order, ctx, true);
-        if (order.getRemainingQuantity() > 0) {
+        if (order.getRemainingQuantity() > 0 && order.getState() != OrderState.CANCELLED) {
             addToBook(buyOrders, order);
         }
     }
 
     private void matchLimitSell(Order order, MatchContext ctx) {
         matchSellWithoutResting(order, ctx, true);
-        if (order.getRemainingQuantity() > 0) {
+        if (order.getRemainingQuantity() > 0 && order.getState() != OrderState.CANCELLED) {
             addToBook(sellOrders, order);
         }
     }
@@ -113,6 +118,14 @@ public class OrderBook {
             if (checkPrice && (!(order.getPrice() >= sellOrder.getPrice()))) {
                 break;
             }
+
+            if (isSelfTrade(order, sellOrder)) {
+                if (!applyStp(order, sellOrder, queue, sellOrders, ctx)) {
+                    break;
+                }
+                continue;
+            }
+
             executeTrade(sellOrder, order, ctx);
             if (sellOrder.getRemainingQuantity() == 0) {
                 queue.pollFirst();
@@ -135,6 +148,10 @@ public class OrderBook {
                 break;
             }
 
+            if (isSelfTrade(order, buyOrder) && applyStp(order, buyOrder, queue, buyOrders, ctx)) {
+                    break;
+            }
+
             executeTrade(buyOrder, order, ctx);
             if (buyOrder.getRemainingQuantity() == 0) {
                 queue.pollFirst();
@@ -144,6 +161,40 @@ public class OrderBook {
                 }
             }
         }
+    }
+
+    private boolean isSelfTrade(Order aggressor, Order resting) {
+        return Objects.equals(aggressor.getUserId(), resting.getUserId());
+    }
+
+    private boolean applyStp(Order aggressor, Order resting, ArrayDeque<Order> restingQueue,
+                    TreeMap<Long, ArrayDeque<Order>> restingBook, MatchContext ctx) {
+        return switch (stpPolicy) {
+            case CANCEL_NEWEST -> {
+                aggressor.setState(OrderState.CANCELLED);
+                yield true;
+            }
+            case CANCEL_OLDEST -> {
+                cancelResting(resting, restingQueue, restingBook, ctx);
+                yield false;
+            }
+            case CANCEL_BOTH -> {
+                cancelResting(resting, restingQueue, restingBook, ctx);
+                aggressor.setState(OrderState.CANCELLED);
+                yield true;
+            }
+        };
+    }
+
+    private void cancelResting(Order resting, ArrayDeque<Order> queue,
+                    TreeMap<Long, ArrayDeque<Order>> book, MatchContext ctx) {
+        queue.pollFirst();
+        orderIndex.remove(resting.getOrderId());
+        if (queue.isEmpty()) {
+            book.remove(resting.getPrice());
+        }
+        resting.setState(OrderState.CANCELLED);
+        emitOrderUpdate(resting, ctx);
     }
 
     private void handleMarket(Order order, MatchContext ctx) {
@@ -166,8 +217,10 @@ public class OrderBook {
 
     private void handleFOK(Order order, MatchContext ctx) {
         boolean canFill = order.getSide() == OrderSide.BUY
-                        ? availableSellLiquidity(order.getPrice()) >= order.getRemainingQuantity()
-                        : availableBuyLiquidity(order.getPrice()) >= order.getRemainingQuantity();
+                        ? availableSellLiquidity(order.getPrice(),
+                                        order.getUserId()) >= order.getRemainingQuantity()
+                        : availableBuyLiquidity(order.getPrice(),
+                                        order.getUserId()) >= order.getRemainingQuantity();
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
@@ -210,7 +263,7 @@ public class OrderBook {
         emitTrade(restingOrder, matchingOrder, tradePrice, tradeQuantity, ctx);
     }
 
-    private long availableSellLiquidity(long priceLimit) {
+    private long availableSellLiquidity(long priceLimit, String excludeUserId) {
         long total = 0L;
 
         for (var entry : sellOrders.entrySet()) {
@@ -219,14 +272,16 @@ public class OrderBook {
             }
 
             for (Order o : entry.getValue()) {
-                total += o.getRemainingQuantity();
+                if (!Objects.equals(o.getUserId(), excludeUserId)) {
+                    total += o.getRemainingQuantity();
+                }
             }
         }
 
         return total;
     }
 
-    private long availableBuyLiquidity(long priceLimit) {
+    private long availableBuyLiquidity(long priceLimit, String excludeUserId) {
         long total = 0L;
 
         for (var entry : buyOrders.entrySet()) {
@@ -235,7 +290,9 @@ public class OrderBook {
             }
 
             for (Order o : entry.getValue()) {
-                total += o.getRemainingQuantity();
+                if (!Objects.equals(o.getUserId(), excludeUserId)) {
+                    total += o.getRemainingQuantity();
+                }
             }
         }
 

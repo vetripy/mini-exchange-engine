@@ -26,6 +26,7 @@ import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.model.STPPolicy;
 import org.trading.exchange.model.Symbol;
 import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
@@ -51,6 +52,10 @@ public class MatchingEngine {
     private Thread engineThread;
 
     public MatchingEngine(EngineMode mode) {
+        this(mode, STPPolicy.CANCEL_NEWEST);
+    }
+
+    public MatchingEngine(EngineMode mode, STPPolicy stpPolicy) {
         this.mode = mode;
         this.state = EngineState.NEW;
         this.inboundEvents = new ManyToOneConcurrentArrayQueue<>(100_000);
@@ -67,7 +72,8 @@ public class MatchingEngine {
                         : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
         this.tradeIdCounter = 0L;
         for (Symbol symbol : Symbol.values()) {
-            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove, this::getNextTradeId));
+            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove, this::getNextTradeId,
+                            stpPolicy));
         }
     }
 
