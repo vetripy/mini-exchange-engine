@@ -405,7 +405,7 @@ public class OrderBookTest {
     private static OrderBook bookWithPolicy(STPPolicy policy) {
         Consumer<String> noop = clientOrderId -> {
         };
-        return new OrderBook(new DirectOutboundSink(List.of(), List.of()), noop,
+        return new OrderBook(new DirectOutboundSink(List.of(), List.of(), List.of()), noop,
                         new AtomicLong()::incrementAndGet, policy);
     }
 
