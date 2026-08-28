@@ -120,7 +120,7 @@ public class OrderBook {
             }
 
             if (isSelfTrade(order, sellOrder)) {
-                if (!applyStp(order, sellOrder, queue, sellOrders, ctx)) {
+                if (applyStp(order, sellOrder, queue, sellOrders, ctx)) {
                     break;
                 }
                 continue;
@@ -148,8 +148,11 @@ public class OrderBook {
                 break;
             }
 
-            if (isSelfTrade(order, buyOrder) && applyStp(order, buyOrder, queue, buyOrders, ctx)) {
+            if (isSelfTrade(order, buyOrder)) {
+                if (applyStp(order, buyOrder, queue, buyOrders, ctx)) {
                     break;
+                }
+                continue;
             }
 
             executeTrade(buyOrder, order, ctx);
@@ -167,6 +170,7 @@ public class OrderBook {
         return Objects.equals(aggressor.getUserId(), resting.getUserId());
     }
 
+    /** Returns true if the aggressor is done matching (break), false to retry the loop (continue). */
     private boolean applyStp(Order aggressor, Order resting, ArrayDeque<Order> restingQueue,
                     TreeMap<Long, ArrayDeque<Order>> restingBook, MatchContext ctx) {
         return switch (stpPolicy) {

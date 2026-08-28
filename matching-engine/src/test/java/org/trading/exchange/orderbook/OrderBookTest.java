@@ -3,6 +3,7 @@ package org.trading.exchange.orderbook;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.trading.exchange.model.OrderState.CANCELLED;
 import static org.trading.exchange.model.OrderState.FILLED;
+import static org.trading.exchange.model.OrderState.PARTIALLY_FILLED;
 import static org.trading.exchange.stub.OrderStub.getValidFOKBuyOrderWith;
 import static org.trading.exchange.stub.OrderStub.getValidFOKSellOrderWith;
 import static org.trading.exchange.stub.OrderStub.getValidIOCBuyOrderWith;
@@ -12,11 +13,19 @@ import static org.trading.exchange.stub.OrderStub.getValidLimitSellOrderWith;
 import static org.trading.exchange.stub.OrderStub.getValidMarketBuyOrderWith;
 import static org.trading.exchange.stub.OrderStub.getValidMarketSellOrderWith;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.trading.exchange.event.DirectOutboundSink;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.model.OrderSide;
+import org.trading.exchange.model.STPPolicy;
+import org.trading.exchange.stub.OrderFactory;
 
 public class OrderBookTest {
 
@@ -387,5 +396,103 @@ public class OrderBookTest {
 
         assertEquals(FILLED, marketBuy.getState());
         assertEquals(0L, marketBuy.getRemainingQuantity());
+    }
+
+    private static long nextOrderId() {
+        return UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE;
+    }
+
+    private static OrderBook bookWithPolicy(STPPolicy policy) {
+        Consumer<String> noop = clientOrderId -> {
+        };
+        return new OrderBook(new DirectOutboundSink(List.of(), List.of()), noop,
+                        new AtomicLong()::incrementAndGet, policy);
+    }
+
+    @Test
+    @Timeout(5)
+    @DisplayName("Self-trade prevention (CANCEL_NEWEST, default): aggressor is cancelled outright, resting book untouched")
+    void selfTradePreventionCancelNewestStopsAggressorEntirely() {
+        Order selfSell = OrderFactory.createLimitOrder(nextOrderId(), "trader1", OrderSide.SELL,
+                        10L, 3L);
+        Order otherSell = OrderFactory.createLimitOrder(nextOrderId(), "trader2", OrderSide.SELL,
+                        10L, 5L);
+        orderBook.addOrder(selfSell, ++sequence);
+        orderBook.addOrder(otherSell, ++sequence);
+
+        Order incomingBuy = OrderFactory.createLimitOrder(nextOrderId(), "trader1", OrderSide.BUY,
+                        10L, 10L);
+        orderBook.addOrder(incomingBuy, ++sequence);
+
+        // Aggressor stops the instant it hits its own resting order — it never reaches
+        // otherSell, even though there was enough non-self liquidity to fill it.
+        assertEquals(CANCELLED, incomingBuy.getState());
+        assertEquals(10L, incomingBuy.getRemainingQuantity());
+        assertEquals(3L, selfSell.getRemainingQuantity());
+        assertEquals(5L, otherSell.getRemainingQuantity());
+    }
+
+    @Test
+    @DisplayName("Self-trade prevention (CANCEL_OLDEST): resting order is cancelled, aggressor keeps matching")
+    void selfTradePreventionCancelOldestSkipsRestingOrder() {
+        OrderBook book = bookWithPolicy(STPPolicy.CANCEL_OLDEST);
+
+        Order selfSell = OrderFactory.createLimitOrder(nextOrderId(), "trader1", OrderSide.SELL,
+                        10L, 3L);
+        Order otherSell = OrderFactory.createLimitOrder(nextOrderId(), "trader2", OrderSide.SELL,
+                        10L, 5L);
+        book.addOrder(selfSell, ++sequence);
+        book.addOrder(otherSell, ++sequence);
+
+        Order incomingBuy = OrderFactory.createLimitOrder(nextOrderId(), "trader1", OrderSide.BUY,
+                        10L, 6L);
+        book.addOrder(incomingBuy, ++sequence);
+
+        assertEquals(CANCELLED, selfSell.getState());
+        assertEquals(3L, selfSell.getRemainingQuantity());
+        assertEquals(0L, otherSell.getRemainingQuantity());
+        assertEquals(PARTIALLY_FILLED, incomingBuy.getState());
+        assertEquals(1L, incomingBuy.getRemainingQuantity());
+        assertEquals(1, book.getBuySnapshot().size());
+    }
+
+    @Test
+    @DisplayName("Self-trade prevention (CANCEL_BOTH): both aggressor and resting order are cancelled")
+    void selfTradePreventionCancelBothCancelsBothSides() {
+        OrderBook book = bookWithPolicy(STPPolicy.CANCEL_BOTH);
+
+        Order selfSell = OrderFactory.createLimitOrder(nextOrderId(), "trader1", OrderSide.SELL,
+                        10L, 3L);
+        book.addOrder(selfSell, ++sequence);
+
+        Order incomingBuy = OrderFactory.createLimitOrder(nextOrderId(), "trader1", OrderSide.BUY,
+                        10L, 3L);
+        book.addOrder(incomingBuy, ++sequence);
+
+        assertEquals(CANCELLED, selfSell.getState());
+        assertEquals(CANCELLED, incomingBuy.getState());
+        assertEquals(0, book.getBuySnapshot().size());
+        assertEquals(0, book.getSellSnapshot().size());
+    }
+
+    @Test
+    @DisplayName("FOK feasibility excludes self liquidity, so it never partially fills before self-trade-cancelling")
+    void fokExcludesSelfLiquidityFromFeasibilityCheck() {
+        Order otherSell = OrderFactory.createLimitOrder(nextOrderId(), "trader2", OrderSide.SELL,
+                        10L, 3L);
+        Order selfSell = OrderFactory.createLimitOrder(nextOrderId(), "trader1", OrderSide.SELL,
+                        10L, 5L);
+        orderBook.addOrder(otherSell, ++sequence);
+        orderBook.addOrder(selfSell, ++sequence);
+
+        Order fokBuy = OrderFactory.createFOKOrder(nextOrderId(), "trader1", OrderSide.BUY, 10L,
+                        5L);
+        orderBook.addOrder(fokBuy, ++sequence);
+
+        // Only 3 of the 8 resting is real (non-self) liquidity, so the FOK must cancel
+        // outright — not partially fill against otherSell and then self-trade-cancel.
+        assertEquals(CANCELLED, fokBuy.getState());
+        assertEquals(5L, fokBuy.getRemainingQuantity());
+        assertEquals(3L, otherSell.getRemainingQuantity());
     }
 }
