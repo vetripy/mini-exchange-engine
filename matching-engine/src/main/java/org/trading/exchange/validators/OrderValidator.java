@@ -6,28 +6,35 @@ import org.trading.exchange.model.Order;
 public final class OrderValidator {
 
     public void validateInvariants(Order order) {
+        String reason = invalidReason(order);
+        if (reason != null) {
+            throw new IllegalStateException(reason);
+        }
+    }
+
+    public String invalidReason(Order order) {
         Objects.requireNonNull(order, "Order cannot be null");
 
         if (order.getOrderId() <= 0) {
-            throw new IllegalStateException("Order ID must be positive");
+            return "Order ID must be positive";
         }
 
         if (order.getRemainingQuantity() <= 0) {
-            throw new IllegalStateException("Quantity must be positive");
+            return "Quantity must be positive";
         }
 
         switch (order.getType()) {
             case LIMIT, IOC, FOK -> {
                 if (order.getPrice() <= 0) {
-                    throw new IllegalStateException(
-                                    "Order type " + order.getType() + " requires positive price");
+                    return "Order type " + order.getType() + " requires positive price";
                 }
             }
             case MARKET -> {
                 if (order.getPrice() != 0) {
-                    throw new IllegalStateException("Market orders should not have price");
+                    return "Market orders should not have price";
                 }
             }
         }
+        return null;
     }
 }

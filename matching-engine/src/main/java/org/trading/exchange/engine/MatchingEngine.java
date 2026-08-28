@@ -19,6 +19,7 @@ import org.trading.exchange.event.OutboundEventFactory;
 import org.trading.exchange.event.OutboundEventHandler;
 import org.trading.exchange.event.OutboundEventSink;
 import org.trading.exchange.event.RingBufferOutboundSink;
+import org.trading.exchange.listener.CommandRejectedListener;
 import org.trading.exchange.listener.OrderUpdateListener;
 import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
@@ -40,9 +41,12 @@ public class MatchingEngine {
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
+    private final List<CommandRejectedListener> commandRejectedListeners =
+                    new CopyOnWriteArrayList<>();
     private final List<EngineStateListener> stateListeners = new CopyOnWriteArrayList<>();
 
     private final EngineMode mode;
+    private final OutboundEventSink sink;
     @Getter
     private volatile EngineState state;
     private Thread engineThread;
@@ -57,11 +61,12 @@ public class MatchingEngine {
                         ProducerType.SINGLE, // engine thread is the sole writer
                         new YieldingWaitStrategy() // low-latency but yields to scheduler
         );
-        disruptor.handleEventsWith(new OutboundEventHandler(tradeListeners, orderUpdateListeners));
+        disruptor.handleEventsWith(new OutboundEventHandler(tradeListeners, orderUpdateListeners,
+                        commandRejectedListeners));
 
-        OutboundEventSink sink = mode == EngineMode.ASYNC
-                        ? new RingBufferOutboundSink(disruptor.getRingBuffer())
-                        : new DirectOutboundSink(tradeListeners, orderUpdateListeners);
+        this.sink = mode == EngineMode.ASYNC ? new RingBufferOutboundSink(disruptor.getRingBuffer())
+                        : new DirectOutboundSink(tradeListeners, orderUpdateListeners,
+                                        commandRejectedListeners);
 
         for (Symbol symbol : Symbol.values()) {
             books.put(symbol, new OrderBook(sink, clientIdToOrder::remove));
@@ -119,7 +124,12 @@ public class MatchingEngine {
                 continue;
             }
             try {
-                process(command); // rejects are a return code now; nothing to catch for them
+                command.setSequence(sequencer.getNextSequence());
+                ProcessResult result = process(command);
+                if (result.isRejected()) {
+                    sink.publishCommandRejected(command.getSequence(), command.getClientOrderId(),
+                                    result.message());
+                }
             } catch (RuntimeException e) {
                 failEngine(e);
                 break;
@@ -132,11 +142,12 @@ public class MatchingEngine {
             throw new IllegalStateException("Engine is not running");
         }
 
-        command.setSequence(sequencer.getNextSequence());
-
         if (EngineMode.SYNC.equals(this.mode)) {
+            command.setSequence(sequencer.getNextSequence());
             ProcessResult result = process(command);
             if (result.isRejected()) {
+                sink.publishCommandRejected(command.getSequence(), command.getClientOrderId(),
+                                result.message());
                 throw new IllegalArgumentException(result.message());
             }
         } else {
@@ -150,7 +161,6 @@ public class MatchingEngine {
 
     private ProcessResult process(EngineCommand command) {
         long seq = command.getSequence();
-
         return switch (command) {
             case NewOrderCommand cmd -> handleNewOrder(cmd, seq);
             case CancelOrderCommand cmd -> handleCancelOrder(cmd, seq);
@@ -159,23 +169,27 @@ public class MatchingEngine {
     }
 
     private ProcessResult handleNewOrder(NewOrderCommand newOrderCommand, long seq) {
-        Order order = buildOrderFromCommand(newOrderCommand, seq);
+        Symbol symbol = Symbol.tryFrom(newOrderCommand.getSymbol());
+        if (symbol == null) {
+            return ProcessResult.INVALID_ORDER;
+        }
 
-        orderValidator.validateInvariants(order);
+        Order order = buildOrderFromCommand(newOrderCommand, seq, symbol);
+        if (orderValidator.invalidReason(order) != null) {
+            return ProcessResult.INVALID_ORDER;
+        }
 
         if (clientIdToOrder.putIfAbsent(order.getClientOrderId(), order) != null) {
             return ProcessResult.DUPLICATE_CLIENT_ORDER_ID;
         }
         OrderBook orderBook = books.get(order.getSymbol());
-        // clientIdToOrder cleanup (for this order AND any resting counterparties it fills) is
-        // driven by OrderBook's onOrderTerminated callback, not here.
         orderBook.addOrder(order, seq);
         return ProcessResult.ACCEPTED;
     }
 
-    private Order buildOrderFromCommand(NewOrderCommand cmd, long seq) {
-        return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), Symbol.from(cmd.getSymbol()),
-                        cmd.getSide(), cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
+    private Order buildOrderFromCommand(NewOrderCommand cmd, long seq, Symbol symbol) {
+        return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), symbol, cmd.getSide(),
+                        cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
                         System.currentTimeMillis());
     }
 
@@ -188,7 +202,6 @@ public class MatchingEngine {
         }
 
         OrderBook orderBook = books.get(order.getSymbol());
-        // clientIdToOrder cleanup happens via OrderBook's onOrderTerminated callback, not here.
         if (!orderBook.cancelOrder(order.getOrderId(), seq)) {
             return ProcessResult.UNKNOWN_CLIENT_ORDER_ID;
         }
@@ -208,6 +221,9 @@ public class MatchingEngine {
             engineThread.interrupt();
         }
 
+        if (mode == EngineMode.ASYNC) {
+            disruptor.shutdown();
+        }
     }
 
     private synchronized void transitionTo(EngineState newState, Throwable cause) {
@@ -223,6 +239,10 @@ public class MatchingEngine {
 
     public void addOrderUpdateListener(OrderUpdateListener listener) {
         orderUpdateListeners.add(listener);
+    }
+
+    public void addCommandRejectedListener(CommandRejectedListener listener) {
+        commandRejectedListeners.add(listener);
     }
 
     public void addStateListener(EngineStateListener listener) {

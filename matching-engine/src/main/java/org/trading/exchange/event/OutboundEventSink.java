@@ -11,4 +11,6 @@ public interface OutboundEventSink {
     void publishTrade(long sequence, long tradeId, long buyOrderId, String buyClientOrderId,
                     long sellOrderId, String sellClientOrderId, Symbol symbol, long tradePrice,
                     long quantity, long timestamp);
+
+    void publishCommandRejected(long sequence, String clientOrderId, String reason);
 }

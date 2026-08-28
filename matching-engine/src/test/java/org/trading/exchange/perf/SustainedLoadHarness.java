@@ -107,11 +107,15 @@ public final class SustainedLoadHarness {
     private static final long BOOK_WARMUP_TIMEOUT_SECONDS = 15;
 
     // --- Stage 2: order mix (must sum to 1.0) ---
-    private static final double IOC_RATIO = 0.35;
-    private static final double LIMIT_RATIO = 0.45;
+    private static final double IOC_RATIO = 0.5;
+    private static final double LIMIT_RATIO = 0.30;
     private static final double CANCEL_RATIO = 0.20;
-    private static final long IOC_QTY = 20L; // 2 * BOOK_ORDER_QTY -> each IOC eats ~2 resting
-    // orders
+    // k = IOC_QTY / BOOK_ORDER_QTY must satisfy LIMIT_RATIO ~= IOC_RATIO * k (see class javadoc).
+    // With IOC_RATIO=0.5, LIMIT_RATIO=0.30 -> k=0.6 -> IOC_QTY = 0.6 * BOOK_ORDER_QTY = 6.
+    // (Was 20, i.e. k=2 -> required LIMIT_RATIO~=1.0 -> consumption outran replenishment ~3x,
+    // crashing the book to near-empty every cycle; the DEPTH_LOW watermark override then forced
+    // a LIMIT-only rebuild, producing a sawtooth that the trend detector read as GROWING.)
+    private static final long IOC_QTY = 6L;
     // Structural depth control: IOCs only consume the INSIDE of the book, so LIMITs spread over all
     // PRICE_LEVELS pile onto deep levels that nothing ever eats -> unbounded growth regardless of
     // ratios. Cluster replenishment near the touch (where IOCs and cancels actually reach it).
@@ -133,7 +137,7 @@ public final class SustainedLoadHarness {
     private static final int SIGNIFICANT_DIGITS = 3;
 
     public static void main(String[] args) throws Exception {
-        long targetRatePerSec = args.length > 0 ? Long.parseLong(args[0]) : 100_000L;
+        long targetRatePerSec = args.length > 0 ? Long.parseLong(args[0]) : 1_000_000L;
         runAt(targetRatePerSec);
     }
 
@@ -698,31 +702,40 @@ public final class SustainedLoadHarness {
             this.depthAnchor = depthAnchor;
         }
 
+        // OrderBook's internal TreeMap/ArrayDeque are single-thread (engine) structures.
+        // Snapshotting them while the engine mutates can throw ConcurrentModification. At
+        // >=1M/sec the engine thread is busy enough that a single attempt collides almost every
+        // tick, starving the sampler down to a handful of points/run and making the growing()
+        // trend detector noise-dominated. Retry a bounded number of times with a short backoff
+        // instead of giving up after one shot.
+        private static final int MAX_SAMPLE_ATTEMPTS = 20;
+
         void sample() {
-            try {
-                int[] q = refl.queueDepth();
-                int[] b = refl.bookDepth();
-                long tMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-                rows.add(new long[] {tMs, q[0], q[1], b[0], b[1]});
-                // Re-anchor the steering counter to ground truth. The event-driven counter
-                // (+LIMIT / -terminal) is fine-grained but drifts if the publisher lags and the
-                // listener stops firing — that drift once ran the counter above DEPTH_HIGH and
-                // forced
-                // an all-IOC workload against an empty book. Snapping it to the real book depth
-                // each
-                // second bounds that drift while keeping per-order granularity in between.
-                depthAnchor.set(b[0] + b[1]);
-            } catch (RuntimeException e) {
-                // OrderBook's internal TreeMap/ArrayDeque are single-thread (engine) structures.
-                // Snapshotting them while the engine mutates can throw ConcurrentModification. A
-                // ScheduledExecutorService silently stops rescheduling after ANY uncaught
-                // exception,
-                // so we swallow, skip this sample, and keep the series alive. Catching
-                // RuntimeException
-                // (not just IllegalAccessException) is deliberate — that narrow catch is exactly
-                // what
-                // killed depth sampling a couple seconds in on the previous harness.
+            for (int attempt = 0; attempt < MAX_SAMPLE_ATTEMPTS; attempt++) {
+                try {
+                    int[] q = refl.queueDepth();
+                    int[] b = refl.bookDepth();
+                    long tMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+                    rows.add(new long[] {tMs, q[0], q[1], b[0], b[1]});
+                    // Re-anchor the steering counter to ground truth. The event-driven counter
+                    // (+LIMIT / -terminal) is fine-grained but drifts if the publisher lags and
+                    // the listener stops firing — that drift once ran the counter above
+                    // DEPTH_HIGH and forced an all-IOC workload against an empty book. Snapping
+                    // it to the real book depth each second bounds that drift while keeping
+                    // per-order granularity in between.
+                    depthAnchor.set(b[0] + b[1]);
+                    return;
+                } catch (RuntimeException e) {
+                    // A ScheduledExecutorService silently stops rescheduling after ANY uncaught
+                    // exception, so we swallow and retry. Catching RuntimeException (not just
+                    // ConcurrentModificationException) is deliberate — that narrow catch is
+                    // exactly what killed depth sampling a couple seconds in on the previous
+                    // harness.
+                    LockSupport.parkNanos(5_000L); // brief backoff so the retry isn't a hot spin
+                }
             }
+            // All attempts collided with the engine thread; skip this tick and keep the series
+            // alive rather than crash the sampler.
         }
 
         boolean queueGrowing() {
