@@ -20,6 +20,14 @@ public class Order {
     @Setter
     private OrderState state = OrderState.NEW;
 
+    // Intrusive doubly-linked-list pointers OrderBook's PriceLevel uses for O(1) cancel.
+    @Setter
+    @ToString.Exclude
+    private Order prev;
+    @Setter
+    @ToString.Exclude
+    private Order next;
+
     public Order(long orderId, String clientOrderId, String userId, Symbol symbol, OrderSide side,
                     OrderType type, long price, long remainingQuantity, long timestamp) {
         this.orderId = orderId;
