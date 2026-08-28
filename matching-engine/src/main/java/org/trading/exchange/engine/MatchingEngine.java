@@ -1,7 +1,5 @@
 package org.trading.exchange.engine;
 
-import static org.trading.exchange.util.MatchingEngineUtil.buildOrderFromCommand;
-
 import com.lmax.disruptor.YieldingWaitStrategy;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
@@ -199,7 +197,7 @@ public class MatchingEngine {
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq, Symbol symbol) {
         return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), symbol, cmd.getSide(),
                         cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
-                        System.currentTimeMillis());
+                        cmd.getTimestamp());
     }
 
     private ProcessResult handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
