@@ -9,6 +9,8 @@ final class PriceLevel implements Iterable<Order> {
 
     private Order head;
     private Order tail;
+    private long totalQuantity;
+    private int orderCount;
 
     boolean isEmpty() {
         return head == null;
@@ -16,6 +18,14 @@ final class PriceLevel implements Iterable<Order> {
 
     Order peekFirst() {
         return head;
+    }
+
+    long totalQuantity() {
+        return totalQuantity;
+    }
+
+    int orderCount() {
+        return orderCount;
     }
 
     void addLast(Order order) {
@@ -27,6 +37,8 @@ final class PriceLevel implements Iterable<Order> {
             tail.setNext(order);
         }
         tail = order;
+        totalQuantity += order.getRemainingQuantity();
+        orderCount++;
     }
 
     /** Unlinks the given order in O(1) — no scan, regardless of its position in the queue. */
@@ -48,6 +60,13 @@ final class PriceLevel implements Iterable<Order> {
 
         order.setPrev(null);
         order.setNext(null);
+        totalQuantity -= order.getRemainingQuantity();
+        orderCount--;
+    }
+
+    /** Reflects a fill against the order at the head of the queue into the level's aggregate. */
+    void reduceQuantity(long quantity) {
+        totalQuantity -= quantity;
     }
 
     @Override

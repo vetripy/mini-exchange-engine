@@ -123,7 +123,7 @@ public class OrderBook {
                 continue;
             }
 
-            executeTrade(sellOrder, order, ctx);
+            executeTrade(sellOrder, order, level, ctx);
             if (sellOrder.getRemainingQuantity() == 0) {
                 level.remove(sellOrder);
                 orderIndex.remove(sellOrder.getOrderId());
@@ -152,7 +152,7 @@ public class OrderBook {
                 continue;
             }
 
-            executeTrade(buyOrder, order, ctx);
+            executeTrade(buyOrder, order, level, ctx);
             if (buyOrder.getRemainingQuantity() == 0) {
                 level.remove(buyOrder);
                 orderIndex.remove(buyOrder.getOrderId());
@@ -220,10 +220,10 @@ public class OrderBook {
 
     private void handleFOK(Order order, MatchContext ctx) {
         boolean canFill = order.getSide() == OrderSide.BUY
-                        ? availableSellLiquidity(order.getPrice(), order.getUserId()) >= order
-                                        .getRemainingQuantity()
-                        : availableBuyLiquidity(order.getPrice(), order.getUserId()) >= order
-                                        .getRemainingQuantity();
+                        ? hasSufficientSellLiquidity(order.getPrice(), order.getUserId(),
+                                        order.getRemainingQuantity())
+                        : hasSufficientBuyLiquidity(order.getPrice(), order.getUserId(),
+                                        order.getRemainingQuantity());
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
@@ -256,50 +256,78 @@ public class OrderBook {
         orderIndex.put(order.getOrderId(), order);
     }
 
-    private void executeTrade(Order restingOrder, Order matchingOrder, MatchContext ctx) {
+    private void executeTrade(Order restingOrder, Order matchingOrder, PriceLevel restingLevel,
+                    MatchContext ctx) {
         long tradeQuantity = Math.min(restingOrder.getRemainingQuantity(),
                         matchingOrder.getRemainingQuantity());
         restingOrder.reduceQuantity(tradeQuantity);
         matchingOrder.reduceQuantity(tradeQuantity);
+        restingLevel.reduceQuantity(tradeQuantity);
         long tradePrice = restingOrder.getPrice();
         emitOrderUpdate(restingOrder, ctx);
         emitTrade(restingOrder, matchingOrder, tradePrice, tradeQuantity, ctx);
     }
 
-    private long availableSellLiquidity(long priceLimit, String excludeUserId) {
-        long total = 0L;
-
+    private boolean hasSufficientSellLiquidity(long priceLimit, String excludeUserId,
+                    long requiredQuantity) {
+        // Fail fast if liquidity is not sufficient
+        long aggregate = 0L;
         for (var entry : sellOrders.entrySet()) {
             if (entry.getKey() > priceLimit) {
                 break;
             }
+            aggregate += entry.getValue().totalQuantity();
+        }
+        if (aggregate < requiredQuantity) {
+            return false;
+        }
 
+        // Check actual liquidity considering STP, stop when reached true
+        long total = 0L;
+        for (var entry : sellOrders.entrySet()) {
+            if (entry.getKey() > priceLimit) {
+                break;
+            }
             for (Order o : entry.getValue()) {
                 if (!Objects.equals(o.getUserId(), excludeUserId)) {
                     total += o.getRemainingQuantity();
+                    if (total >= requiredQuantity) {
+                        return true;
+                    }
                 }
             }
         }
-
-        return total;
+        return false;
     }
 
-    private long availableBuyLiquidity(long priceLimit, String excludeUserId) {
-        long total = 0L;
-
+    private boolean hasSufficientBuyLiquidity(long priceLimit, String excludeUserId,
+                    long requiredQuantity) {
+        long aggregate = 0L;
         for (var entry : buyOrders.entrySet()) {
             if (entry.getKey() < priceLimit) {
                 break;
             }
+            aggregate += entry.getValue().totalQuantity();
+        }
+        if (aggregate < requiredQuantity) {
+            return false;
+        }
 
+        long total = 0L;
+        for (var entry : buyOrders.entrySet()) {
+            if (entry.getKey() < priceLimit) {
+                break;
+            }
             for (Order o : entry.getValue()) {
                 if (!Objects.equals(o.getUserId(), excludeUserId)) {
                     total += o.getRemainingQuantity();
+                    if (total >= requiredQuantity) {
+                        return true;
+                    }
                 }
             }
         }
-
-        return total;
+        return false;
     }
 
     private void emitOrderUpdate(Order order, MatchContext ctx) {
