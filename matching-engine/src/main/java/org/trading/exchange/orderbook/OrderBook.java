@@ -3,7 +3,6 @@ package org.trading.exchange.orderbook;
 import static org.trading.exchange.util.OrderBookUtil.getClientOrderId;
 import static org.trading.exchange.util.OrderBookUtil.getOrderId;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -25,9 +24,8 @@ import org.trading.exchange.util.OrderBookUtil;
 
 public class OrderBook {
 
-    private final TreeMap<Long, ArrayDeque<Order>> buyOrders =
-                    new TreeMap<>(Comparator.reverseOrder());
-    private final TreeMap<Long, ArrayDeque<Order>> sellOrders = new TreeMap<>();
+    private final TreeMap<Long, PriceLevel> buyOrders = new TreeMap<>(Comparator.reverseOrder());
+    private final TreeMap<Long, PriceLevel> sellOrders = new TreeMap<>();
     private final Long2ObjectHashMap<Order> orderIndex = new Long2ObjectHashMap<>();
     private final MatchContext ctx;
     private final Consumer<String> onOrderTerminated;
@@ -65,13 +63,12 @@ public class OrderBook {
             return false;
         }
 
-        TreeMap<Long, ArrayDeque<Order>> book =
-                        order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
-        ArrayDeque<Order> queue = book.get(order.getPrice());
+        TreeMap<Long, PriceLevel> book = order.getSide() == OrderSide.BUY ? buyOrders : sellOrders;
+        PriceLevel level = book.get(order.getPrice());
 
-        if (queue != null) {
-            queue.remove(order);
-            if (queue.isEmpty()) {
+        if (level != null) {
+            level.remove(order);
+            if (level.isEmpty()) {
                 book.remove(order.getPrice());
             }
         }
@@ -111,26 +108,26 @@ public class OrderBook {
 
     private void matchBuyWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!sellOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Entry<Long, ArrayDeque<Order>> entry = sellOrders.firstEntry();
-            ArrayDeque<Order> queue = entry.getValue();
-            Order sellOrder = queue.peekFirst();
+            Entry<Long, PriceLevel> entry = sellOrders.firstEntry();
+            PriceLevel level = entry.getValue();
+            Order sellOrder = level.peekFirst();
 
             if (checkPrice && (!(order.getPrice() >= sellOrder.getPrice()))) {
                 break;
             }
 
             if (isSelfTrade(order, sellOrder)) {
-                if (applyStp(order, sellOrder, queue, sellOrders, ctx)) {
+                if (applyStp(order, sellOrder, level, sellOrders, ctx)) {
                     break;
                 }
                 continue;
             }
 
-            executeTrade(sellOrder, order, ctx);
+            executeTrade(sellOrder, order, level, ctx);
             if (sellOrder.getRemainingQuantity() == 0) {
-                queue.pollFirst();
+                level.remove(sellOrder);
                 orderIndex.remove(sellOrder.getOrderId());
-                if (queue.isEmpty()) {
+                if (level.isEmpty()) {
                     sellOrders.pollFirstEntry();
                 }
             }
@@ -140,26 +137,26 @@ public class OrderBook {
 
     private void matchSellWithoutResting(Order order, MatchContext ctx, boolean checkPrice) {
         while (!buyOrders.isEmpty() && order.getRemainingQuantity() > 0) {
-            Entry<Long, ArrayDeque<Order>> entry = buyOrders.firstEntry();
-            ArrayDeque<Order> queue = entry.getValue();
-            Order buyOrder = queue.peekFirst();
+            Entry<Long, PriceLevel> entry = buyOrders.firstEntry();
+            PriceLevel level = entry.getValue();
+            Order buyOrder = level.peekFirst();
 
             if (checkPrice && (!(order.getPrice() <= buyOrder.getPrice()))) {
                 break;
             }
 
             if (isSelfTrade(order, buyOrder)) {
-                if (applyStp(order, buyOrder, queue, buyOrders, ctx)) {
+                if (applyStp(order, buyOrder, level, buyOrders, ctx)) {
                     break;
                 }
                 continue;
             }
 
-            executeTrade(buyOrder, order, ctx);
+            executeTrade(buyOrder, order, level, ctx);
             if (buyOrder.getRemainingQuantity() == 0) {
-                queue.pollFirst();
+                level.remove(buyOrder);
                 orderIndex.remove(buyOrder.getOrderId());
-                if (queue.isEmpty()) {
+                if (level.isEmpty()) {
                     buyOrders.pollFirstEntry();
                 }
             }
@@ -173,30 +170,30 @@ public class OrderBook {
     /**
      * Returns true if the aggressor is done matching (break), false to retry the loop (continue).
      */
-    private boolean applyStp(Order aggressor, Order resting, ArrayDeque<Order> restingQueue,
-                    TreeMap<Long, ArrayDeque<Order>> restingBook, MatchContext ctx) {
+    private boolean applyStp(Order aggressor, Order resting, PriceLevel restingLevel,
+                    TreeMap<Long, PriceLevel> restingBook, MatchContext ctx) {
         return switch (stpPolicy) {
             case CANCEL_NEWEST -> {
                 aggressor.setState(OrderState.CANCELLED);
                 yield true;
             }
             case CANCEL_OLDEST -> {
-                cancelResting(resting, restingQueue, restingBook, ctx);
+                cancelResting(resting, restingLevel, restingBook, ctx);
                 yield false;
             }
             case CANCEL_BOTH -> {
-                cancelResting(resting, restingQueue, restingBook, ctx);
+                cancelResting(resting, restingLevel, restingBook, ctx);
                 aggressor.setState(OrderState.CANCELLED);
                 yield true;
             }
         };
     }
 
-    private void cancelResting(Order resting, ArrayDeque<Order> queue,
-                    TreeMap<Long, ArrayDeque<Order>> book, MatchContext ctx) {
-        queue.pollFirst();
+    private void cancelResting(Order resting, PriceLevel level, TreeMap<Long, PriceLevel> book,
+                    MatchContext ctx) {
+        level.remove(resting);
         orderIndex.remove(resting.getOrderId());
-        if (queue.isEmpty()) {
+        if (level.isEmpty()) {
             book.remove(resting.getPrice());
         }
         resting.setState(OrderState.CANCELLED);
@@ -223,10 +220,10 @@ public class OrderBook {
 
     private void handleFOK(Order order, MatchContext ctx) {
         boolean canFill = order.getSide() == OrderSide.BUY
-                        ? availableSellLiquidity(order.getPrice(), order.getUserId()) >= order
-                                        .getRemainingQuantity()
-                        : availableBuyLiquidity(order.getPrice(), order.getUserId()) >= order
-                                        .getRemainingQuantity();
+                        ? hasSufficientSellLiquidity(order.getPrice(), order.getUserId(),
+                                        order.getRemainingQuantity())
+                        : hasSufficientBuyLiquidity(order.getPrice(), order.getUserId(),
+                                        order.getRemainingQuantity());
 
         if (canFill) {
             if (order.getSide() == OrderSide.BUY) {
@@ -254,55 +251,83 @@ public class OrderBook {
         emitOrderUpdate(order, ctx);
     }
 
-    private void addToBook(TreeMap<Long, ArrayDeque<Order>> book, Order order) {
-        book.computeIfAbsent(order.getPrice(), k -> new ArrayDeque<>()).addLast(order);
+    private void addToBook(TreeMap<Long, PriceLevel> book, Order order) {
+        book.computeIfAbsent(order.getPrice(), k -> new PriceLevel()).addLast(order);
         orderIndex.put(order.getOrderId(), order);
     }
 
-    private void executeTrade(Order restingOrder, Order matchingOrder, MatchContext ctx) {
+    private void executeTrade(Order restingOrder, Order matchingOrder, PriceLevel restingLevel,
+                    MatchContext ctx) {
         long tradeQuantity = Math.min(restingOrder.getRemainingQuantity(),
                         matchingOrder.getRemainingQuantity());
         restingOrder.reduceQuantity(tradeQuantity);
         matchingOrder.reduceQuantity(tradeQuantity);
+        restingLevel.reduceQuantity(tradeQuantity);
         long tradePrice = restingOrder.getPrice();
         emitOrderUpdate(restingOrder, ctx);
         emitTrade(restingOrder, matchingOrder, tradePrice, tradeQuantity, ctx);
     }
 
-    private long availableSellLiquidity(long priceLimit, String excludeUserId) {
-        long total = 0L;
-
+    private boolean hasSufficientSellLiquidity(long priceLimit, String excludeUserId,
+                    long requiredQuantity) {
+        // Fail fast if liquidity is not sufficient
+        long aggregate = 0L;
         for (var entry : sellOrders.entrySet()) {
             if (entry.getKey() > priceLimit) {
                 break;
             }
+            aggregate += entry.getValue().totalQuantity();
+        }
+        if (aggregate < requiredQuantity) {
+            return false;
+        }
 
+        // Check actual liquidity considering STP, stop when reached true
+        long total = 0L;
+        for (var entry : sellOrders.entrySet()) {
+            if (entry.getKey() > priceLimit) {
+                break;
+            }
             for (Order o : entry.getValue()) {
                 if (!Objects.equals(o.getUserId(), excludeUserId)) {
                     total += o.getRemainingQuantity();
+                    if (total >= requiredQuantity) {
+                        return true;
+                    }
                 }
             }
         }
-
-        return total;
+        return false;
     }
 
-    private long availableBuyLiquidity(long priceLimit, String excludeUserId) {
-        long total = 0L;
-
+    private boolean hasSufficientBuyLiquidity(long priceLimit, String excludeUserId,
+                    long requiredQuantity) {
+        long aggregate = 0L;
         for (var entry : buyOrders.entrySet()) {
             if (entry.getKey() < priceLimit) {
                 break;
             }
+            aggregate += entry.getValue().totalQuantity();
+        }
+        if (aggregate < requiredQuantity) {
+            return false;
+        }
 
+        long total = 0L;
+        for (var entry : buyOrders.entrySet()) {
+            if (entry.getKey() < priceLimit) {
+                break;
+            }
             for (Order o : entry.getValue()) {
                 if (!Objects.equals(o.getUserId(), excludeUserId)) {
                     total += o.getRemainingQuantity();
+                    if (total >= requiredQuantity) {
+                        return true;
+                    }
                 }
             }
         }
-
-        return total;
+        return false;
     }
 
     private void emitOrderUpdate(Order order, MatchContext ctx) {
@@ -327,18 +352,26 @@ public class OrderBook {
 
     public Map<Long, List<Order>> getBuySnapshot() {
         Map<Long, List<Order>> snapshot = new TreeMap<>(Comparator.reverseOrder());
-        for (Map.Entry<Long, ArrayDeque<Order>> entry : buyOrders.entrySet()) {
-            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        for (Map.Entry<Long, PriceLevel> entry : buyOrders.entrySet()) {
+            snapshot.put(entry.getKey(), toList(entry.getValue()));
         }
         return snapshot;
     }
 
     public Map<Long, List<Order>> getSellSnapshot() {
         Map<Long, List<Order>> snapshot = new TreeMap<>();
-        for (Map.Entry<Long, ArrayDeque<Order>> entry : sellOrders.entrySet()) {
-            snapshot.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        for (Map.Entry<Long, PriceLevel> entry : sellOrders.entrySet()) {
+            snapshot.put(entry.getKey(), toList(entry.getValue()));
         }
         return snapshot;
+    }
+
+    private static List<Order> toList(PriceLevel level) {
+        List<Order> orders = new ArrayList<>();
+        for (Order order : level) {
+            orders.add(order);
+        }
+        return orders;
     }
 
     public void displayBook() {
