@@ -216,4 +216,24 @@ class MatchingEngineTest {
         assertEquals(Symbol.TEST1, tradeEvent1.symbol());
         assertEquals(Symbol.TEST2, tradeEvent2.symbol());
     }
+
+    @Test
+    @DisplayName("Test trade IDs are globally unique across symbols")
+    void tradeIdsAreUniqueAcrossSymbols() throws Exception {
+        EngineCommand buyCommand1 = getValidLimitBuyCommand("TEST1", 100L, 5L);
+        EngineCommand sellCommand1 = getValidLimitSellCommand("TEST1", 100L, 5L);
+        EngineCommand buyCommand2 = getValidLimitBuyCommand("TEST2", 200L, 5L);
+        EngineCommand sellCommand2 = getValidLimitSellCommand("TEST2", 200L, 5L);
+
+        engine.submit(buyCommand1);
+        engine.submit(sellCommand1);
+        engine.submit(buyCommand2);
+        engine.submit(sellCommand2);
+
+        assertEquals(2, tradeListener.getTrades().size());
+
+        List<Long> tradeIds = tradeListener.getTrades().stream().map(TradeEvent::tradeId).toList();
+
+        assertEquals(tradeIds.size(), tradeIds.stream().distinct().count());
+    }
 }

@@ -25,6 +25,7 @@ import org.trading.exchange.listener.TradeListener;
 import org.trading.exchange.model.EngineMode;
 import org.trading.exchange.model.EngineState;
 import org.trading.exchange.model.Order;
+import org.trading.exchange.model.STPPolicy;
 import org.trading.exchange.model.Symbol;
 import org.trading.exchange.orderbook.OrderBook;
 import org.trading.exchange.sequencer.Sequencer;
@@ -38,6 +39,7 @@ public class MatchingEngine {
     private final Map<String, Order> clientIdToOrder = new HashMap<>();
     private final Map<Symbol, OrderBook> books = new HashMap<>();
     private final OrderValidator orderValidator = new OrderValidator();
+    private long tradeIdCounter;
 
     private final List<TradeListener> tradeListeners = new CopyOnWriteArrayList<>();
     private final List<OrderUpdateListener> orderUpdateListeners = new CopyOnWriteArrayList<>();
@@ -52,6 +54,10 @@ public class MatchingEngine {
     private Thread engineThread;
 
     public MatchingEngine(EngineMode mode) {
+        this(mode, STPPolicy.CANCEL_NEWEST);
+    }
+
+    public MatchingEngine(EngineMode mode, STPPolicy stpPolicy) {
         this.mode = mode;
         this.state = EngineState.NEW;
         this.inboundEvents = new ManyToOneConcurrentArrayQueue<>(100_000);
@@ -67,9 +73,10 @@ public class MatchingEngine {
         this.sink = mode == EngineMode.ASYNC ? new RingBufferOutboundSink(disruptor.getRingBuffer())
                         : new DirectOutboundSink(tradeListeners, orderUpdateListeners,
                                         commandRejectedListeners);
-
+        this.tradeIdCounter = 0L;
         for (Symbol symbol : Symbol.values()) {
-            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove));
+            books.put(symbol, new OrderBook(sink, clientIdToOrder::remove, this::getNextTradeId,
+                            stpPolicy));
         }
     }
 
@@ -189,8 +196,7 @@ public class MatchingEngine {
 
     private Order buildOrderFromCommand(NewOrderCommand cmd, long seq, Symbol symbol) {
         return new Order(seq, cmd.getClientOrderId(), cmd.getUserId(), symbol, cmd.getSide(),
-                        cmd.getType(), cmd.getPrice(), cmd.getQuantity(),
-                        System.currentTimeMillis());
+                        cmd.getType(), cmd.getPrice(), cmd.getQuantity(), cmd.getTimestamp());
     }
 
     private ProcessResult handleCancelOrder(CancelOrderCommand cancelOrderCommand, long seq) {
@@ -227,6 +233,9 @@ public class MatchingEngine {
     }
 
     private synchronized void transitionTo(EngineState newState, Throwable cause) {
+        if (this.state == newState) {
+            return;
+        }
         EngineState oldState = this.state;
         this.state = newState;
 
@@ -247,6 +256,10 @@ public class MatchingEngine {
 
     public void addStateListener(EngineStateListener listener) {
         stateListeners.add(listener);
+    }
+
+    private long getNextTradeId() {
+        return ++tradeIdCounter;
     }
 
 }
